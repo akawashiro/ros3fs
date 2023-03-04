@@ -8,8 +8,29 @@
 - Run `./create-files.sh`
 
 ## Use ozone client
+- Run `docker command` without `sudo`. Check [https://docs.docker.com/engine/install/linux-postinstall/](https://docs.docker.com/engine/install/linux-postinstall/).
 ```
-sudo docker exec -it ozone-instance ./bin/ozone sh volume info /s3v
+docker exec -it ozone-instance ./bin/ozone sh volume info /s3v
+```
+
+## FUSE libraries
+- https://github.com/libfuse/libfuse
+    - C
+    - Active
+- https://github.com/zargony/fuse-rs
+    - Rust
+    - Inactive
+- https://github.com/jmillikin/rust-fuse
+    - Rust
+    - Inactive
+
+## Log
+https://qiita.com/janus_wel/items/e70695670c22a0331451
+http://libfuse.github.io/doxygen/example_2hello_8c.html
+```
+mkdir -p ./hello_fs_mountpoint
+sudo umount ./hello_fs_mountpoint
+sudo ./hello_fs ./hello_fs_mountpoint --name="hoge" --contents="fuga" -f
 ```
 
 # Failed attempts...
