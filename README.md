@@ -13,6 +13,26 @@
 docker exec -it ozone-instance ./bin/ozone sh volume info /s3v
 ```
 
+## Build and use
+```
+$ mkdir -p ./build/ozonefs_mountpoint
+$ cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -S . -B build -G Ninja
+$ cmake --build build
+$ sudo ./build/ozonefs ./build/ozonefs_mountpoint --name="hoge" --contents="fuga" -f
+```
+
+In another terminal,
+```
+$ sudo su
+# ls build/ozonefs_mountpoint/
+ls: cannot access 'build/ozonefs_mountpoint/testfile_a': No such file or directory
+ls: cannot access 'build/ozonefs_mountpoint/testfile_b': No such file or directory
+ls: cannot access 'build/ozonefs_mountpoint/testfile_c': No such file or directory
+hoge  testfile_a  testfile_b  testfile_c
+```
+
+# Memo
+
 ## FUSE libraries
 - https://github.com/libfuse/libfuse
     - C
@@ -24,6 +44,7 @@ docker exec -it ozone-instance ./bin/ozone sh volume info /s3v
     - Rust
     - Inactive
 
+
 ## Log
 https://qiita.com/janus_wel/items/e70695670c22a0331451
 http://libfuse.github.io/doxygen/example_2hello_8c.html
@@ -32,9 +53,8 @@ mkdir -p ./hello_fs_mountpoint
 sudo umount ./hello_fs_mountpoint
 sudo ./hello_fs ./hello_fs_mountpoint --name="hoge" --contents="fuga" -f
 docker exec -it ozone-instance ./bin/ozone sh key ls /s3v/bucket1
+n && sudo ./ozonefs ./hello_fs_mountpoint --name="hoge" --contents="fuga" -f
 ```
-
-# Failed attempts...
 
 ## Install AWS CLI
 - https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html
