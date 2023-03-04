@@ -26,7 +26,20 @@ add_definitions(-DC10_USE_GLOG=1)
 pkg_check_modules(LIBFUSE3 REQUIRED fuse3)
 message(STATUS "Found fuse3: ${LIBFUSE3_INCLUDE_DIRS} ${LIBFUSE3_LIBRARIES}")
 
-add_executable(hello_fs hello.c)
+include(FetchContent)
+
+FetchContent_Declare(json URL https://github.com/nlohmann/json/releases/download/v3.11.2/json.tar.xz)
+FetchContent_MakeAvailable(json)
+
+add_executable(hello_fs hello.cc)
 target_link_libraries(hello_fs ${LIBFUSE3_LIBRARIES} glog)
 target_include_directories(hello_fs PRIVATE ${LIBFUSE3_INCLUDE_DIRS})
 target_compile_options(hello_fs PUBLIC -Wall)
+
+add_executable(ozonefs ozonefs.cc)
+target_link_libraries(ozonefs ${LIBFUSE3_LIBRARIES} glog  nlohmann_json::nlohmann_json)
+target_include_directories(ozonefs PRIVATE ${LIBFUSE3_INCLUDE_DIRS})
+target_compile_options(ozonefs PUBLIC -Wall)
+
+add_executable(ls_test ls_test.cc)
+target_link_libraries(ls_test PRIVATE nlohmann_json::nlohmann_json)

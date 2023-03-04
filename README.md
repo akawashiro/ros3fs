@@ -31,6 +31,7 @@ http://libfuse.github.io/doxygen/example_2hello_8c.html
 mkdir -p ./hello_fs_mountpoint
 sudo umount ./hello_fs_mountpoint
 sudo ./hello_fs ./hello_fs_mountpoint --name="hoge" --contents="fuga" -f
+docker exec -it ozone-instance ./bin/ozone sh key ls /s3v/bucket1
 ```
 
 # Failed attempts...
