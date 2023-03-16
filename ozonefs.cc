@@ -69,6 +69,22 @@ std::vector<std::string> ListAllFiles() {
   return result;
 }
 
+void CopyFile(const std::string &src, const std::string &dst) {
+  std::string ozone_get_cmd =
+      std::string("docker exec -it ozone-instance ./bin/ozone sh key get "
+                  "/s3v/bucket1" +
+                  src + " /tmp/" + dst);
+
+  LOG(INFO) << "ozone_get_cmd: " << ozone_get_cmd;
+  CHECK_EQ(std::system(ozone_get_cmd.c_str()), 0);
+
+  std::string docker_cp_cmd =
+      std::string("docker cp ozone-instance:/tmp/" + src + " /tmp" + dst);
+
+  LOG(INFO) << "docker_cp_cmd: " << docker_cp_cmd;
+  CHECK_EQ(std::system(docker_cp_cmd.c_str()), 0);
+}
+
 int ozonefs_getattr(const char *path, struct stat *stbuf,
                     struct fuse_file_info *fi) {
   LOG(INFO) << "ozonefs_getattr" << LOG_KEY(path);
@@ -93,7 +109,8 @@ int ozonefs_getattr(const char *path, struct stat *stbuf,
     if ("/" + f == path_str) {
       stbuf->st_mode = S_IFREG | 0444;
       stbuf->st_nlink = 2;
-      LOG(INFO) << "ozonefs_getattr: " << LOG_KEY(path_str) << " is a normal file.";
+      LOG(INFO) << "ozonefs_getattr: " << LOG_KEY(path_str)
+                << " is a normal file.";
       return 0;
     }
   }
@@ -128,15 +145,25 @@ int ozonefs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 int ozonefs_open(const char *path, struct fuse_file_info *fi) {
   LOG(INFO) << "ozonefs_open" << LOG_KEY(path);
 
-  if ((fi->flags & O_ACCMODE) != O_RDONLY)
+  if ((fi->flags & O_ACCMODE) != O_RDONLY){
+    LOG(WARNING) << "ozonefs_open: " << LOG_KEY(path) << " is not read only.";
     return -EACCES;
+  }
 
   return 0;
 }
 
 int ozonefs_read(const char *path, char *buf, size_t size, off_t offset,
                  struct fuse_file_info *fi) {
-  LOG(INFO) << "ozonefs_read" << LOG_KEY(path);
+  const std::string path_str(path);
+  LOG(INFO) << "ozonefs_read" << LOG_KEY(path_str);
+
+  const auto &files = ListAllFiles();
+  for (const auto &file : files) {
+      if(file == path_str) {
+          CopyFile(file, path_str);
+      }
+  }
 
   (void)fi;
 
