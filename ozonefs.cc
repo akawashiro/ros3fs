@@ -1,10 +1,6 @@
-/*
-  FUSE: Filesystem in Userspace
-  Copyright (C) 2001-2007  Miklos Szeredi <miklos@szeredi.hu>
-
-  This program can be distributed under the terms of the GNU GPLv2.
-  See the file COPYING.
-*/
+// ozonefs: FUSE filesystem for Ozone
+// Copyright (C) 2023 Akira Kawata
+// This program can be distributed under the terms of the GNU GPLv2.
 
 #define FUSE_USE_VERSION 31
 
@@ -51,7 +47,7 @@ void *ozonefs_init(struct fuse_conn_info *conn, struct fuse_config *cfg) {
   return NULL;
 }
 
-std::vector<std::string> lsRoot() {
+std::vector<std::string> ListAllFiles() {
   using json = nlohmann::json;
 
   std::string exec_out = std::tmpnam(nullptr);
@@ -78,18 +74,32 @@ int ozonefs_getattr(const char *path, struct stat *stbuf,
   LOG(INFO) << "ozonefs_getattr" << LOG_KEY(path);
 
   (void)fi;
-  int res = 0;
 
   memset(stbuf, 0, sizeof(struct stat));
-  if (strcmp(path, "/") == 0) {
-    stbuf->st_mode = S_IFDIR | 0755;
+
+  // Check https://linuxjm.osdn.jp/html/LDP_man-pages/man2/stat.2.html for
+  // S_IFDIR and S_IFREG.
+
+  const std::string path_str(path);
+  if (path_str == "/") {
+    stbuf->st_mode = S_IFDIR | 0444;
     stbuf->st_nlink = 2;
-  } else {
-    res = -ENOENT;
+    LOG(INFO) << "ozonefs_getattr: " << LOG_KEY(path_str) << " is the root.";
+    return 0;
   }
 
-  LOG(INFO) << "ozonefs_getattr" << LOG_KEY(path) << LOG_KEY(res);
-  return res;
+  const auto all_files = ListAllFiles();
+  for (const auto &f : all_files) {
+    if ("/" + f == path_str) {
+      stbuf->st_mode = S_IFREG | 0444;
+      stbuf->st_nlink = 2;
+      LOG(INFO) << "ozonefs_getattr: " << LOG_KEY(path_str) << " is a normal file.";
+      return 0;
+    }
+  }
+
+  LOG(INFO) << "ozonefs_getattr: " << LOG_KEY(path_str) << " does not exist.";
+  return -ENOENT;
 }
 
 int ozonefs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
@@ -107,7 +117,7 @@ int ozonefs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
   filler(buf, ".", NULL, 0, static_cast<fuse_fill_dir_flags>(0));
   filler(buf, "..", NULL, 0, static_cast<fuse_fill_dir_flags>(0));
 
-  const auto &files = lsRoot();
+  const auto &files = ListAllFiles();
   for (const auto &file : files) {
     filler(buf, file.c_str(), NULL, 0, static_cast<fuse_fill_dir_flags>(0));
   }
