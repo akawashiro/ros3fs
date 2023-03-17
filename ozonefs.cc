@@ -41,7 +41,7 @@ struct options {
 const struct fuse_opt option_spec[] = {
     OPTION("-h", show_help), OPTION("--help", show_help), FUSE_OPT_END};
 
-void *ozonefs_init(struct fuse_conn_info *conn, struct fuse_config *cfg) {
+void *OzoneFSInit(struct fuse_conn_info *conn, struct fuse_config *cfg) {
   (void)conn;
   cfg->kernel_cache = 1;
   return NULL;
@@ -85,9 +85,9 @@ void CopyFile(const std::string &src, const std::string &dst) {
   CHECK_EQ(std::system(docker_cp_cmd.c_str()), 0);
 }
 
-int ozonefs_getattr(const char *path, struct stat *stbuf,
+int OzoneFSGetattr(const char *path, struct stat *stbuf,
                     struct fuse_file_info *fi) {
-  LOG(INFO) << "ozonefs_getattr" << LOG_KEY(path);
+  LOG(INFO) << "OzoneFSGetattr" << LOG_KEY(path);
 
   (void)fi;
 
@@ -100,7 +100,7 @@ int ozonefs_getattr(const char *path, struct stat *stbuf,
   if (path_str == "/") {
     stbuf->st_mode = S_IFDIR | 0444;
     stbuf->st_nlink = 2;
-    LOG(INFO) << "ozonefs_getattr: " << LOG_KEY(path_str) << " is the root.";
+    LOG(INFO) << "OzoneFSGetattr: " << LOG_KEY(path_str) << " is the root.";
     return 0;
   }
 
@@ -109,24 +109,24 @@ int ozonefs_getattr(const char *path, struct stat *stbuf,
     if ("/" + f == path_str) {
       stbuf->st_mode = S_IFREG | 0444;
       stbuf->st_nlink = 2;
-      LOG(INFO) << "ozonefs_getattr: " << LOG_KEY(path_str)
+      LOG(INFO) << "OzoneFSGetattr: " << LOG_KEY(path_str)
                 << " is a normal file.";
       return 0;
     }
   }
 
-  LOG(INFO) << "ozonefs_getattr: " << LOG_KEY(path_str) << " does not exist.";
+  LOG(INFO) << "OzoneFSGetattr: " << LOG_KEY(path_str) << " does not exist.";
   return -ENOENT;
 }
 
-int ozonefs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
+int OzoneFSReaddir(const char *path, void *buf, fuse_fill_dir_t filler,
                     off_t offset, struct fuse_file_info *fi,
                     enum fuse_readdir_flags flags) {
   (void)offset;
   (void)fi;
   (void)flags;
 
-  LOG(INFO) << "ozonefs_readdir" << LOG_KEY(path);
+  LOG(INFO) << "OzoneFSReaddir" << LOG_KEY(path);
 
   if (strcmp(path, "/") != 0)
     return -ENOENT;
@@ -142,21 +142,21 @@ int ozonefs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
   return 0;
 }
 
-int ozonefs_open(const char *path, struct fuse_file_info *fi) {
-  LOG(INFO) << "ozonefs_open" << LOG_KEY(path);
+int OzoneFSOpen(const char *path, struct fuse_file_info *fi) {
+  LOG(INFO) << "OzoneFSOpen" << LOG_KEY(path);
 
   if ((fi->flags & O_ACCMODE) != O_RDONLY){
-    LOG(WARNING) << "ozonefs_open: " << LOG_KEY(path) << " is not read only.";
+    LOG(WARNING) << "OzoneFSOpen: " << LOG_KEY(path) << " is not read only.";
     return -EACCES;
   }
 
   return 0;
 }
 
-int ozonefs_read(const char *path, char *buf, size_t size, off_t offset,
+int OzoneFSRead(const char *path, char *buf, size_t size, off_t offset,
                  struct fuse_file_info *fi) {
   const std::string path_str(path);
-  LOG(INFO) << "ozonefs_read" << LOG_KEY(path_str);
+  LOG(INFO) << "OzoneFSRead" << LOG_KEY(path_str);
 
   const auto &files = ListAllFiles();
   for (const auto &file : files) {
@@ -173,11 +173,11 @@ int ozonefs_read(const char *path, char *buf, size_t size, off_t offset,
 }
 
 const struct fuse_operations ozonefs_oper = {
-    .getattr = ozonefs_getattr,
-    .open = ozonefs_open,
-    .read = ozonefs_read,
-    .readdir = ozonefs_readdir,
-    .init = ozonefs_init,
+    .getattr = OzoneFSGetattr,
+    .open = OzoneFSOpen,
+    .read = OzoneFSRead,
+    .readdir = OzoneFSReaddir,
+    .init = OzoneFSInit,
 };
 
 void show_help(const char *progname) {
