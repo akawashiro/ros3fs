@@ -2,6 +2,8 @@
 // Copyright (C) 2023 Akira Kawata
 // This program can be distributed under the terms of the GNU GPLv2.
 
+#include <cstddef>
+#include <memory>
 #define FUSE_USE_VERSION 31
 
 #include <assert.h>
@@ -15,6 +17,7 @@
 #include <glog/logging.h>
 
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <nlohmann/json.hpp>
@@ -47,6 +50,11 @@ void *OzoneFSInit(struct fuse_conn_info *conn, struct fuse_config *cfg) {
   return NULL;
 }
 
+struct MetaData {
+  std::string name;
+  uint64_t size;
+};
+
 std::vector<std::string> ListAllFiles() {
   using json = nlohmann::json;
 
@@ -70,23 +78,23 @@ std::vector<std::string> ListAllFiles() {
 }
 
 void CopyFile(const std::string &src, const std::string &dst) {
+  LOG(INFO) << LOG_KEY(src) << LOG_KEY(dst);
+
   std::string ozone_get_cmd =
       std::string("docker exec -it ozone-instance ./bin/ozone sh key get "
-                  "/s3v/bucket1" +
-                  src + " /tmp/" + dst);
-
+                  "/s3v/bucket1/" +
+                  src + " " + dst);
   LOG(INFO) << "ozone_get_cmd: " << ozone_get_cmd;
   CHECK_EQ(std::system(ozone_get_cmd.c_str()), 0);
 
   std::string docker_cp_cmd =
-      std::string("docker cp ozone-instance:/tmp/" + src + " /tmp" + dst);
-
+      std::string("docker cp ozone-instance:" + dst + " " + dst);
   LOG(INFO) << "docker_cp_cmd: " << docker_cp_cmd;
   CHECK_EQ(std::system(docker_cp_cmd.c_str()), 0);
 }
 
 int OzoneFSGetattr(const char *path, struct stat *stbuf,
-                    struct fuse_file_info *fi) {
+                   struct fuse_file_info *fi) {
   LOG(INFO) << "OzoneFSGetattr" << LOG_KEY(path);
 
   (void)fi;
@@ -108,7 +116,8 @@ int OzoneFSGetattr(const char *path, struct stat *stbuf,
   for (const auto &f : all_files) {
     if ("/" + f == path_str) {
       stbuf->st_mode = S_IFREG | 0444;
-      stbuf->st_nlink = 2;
+      stbuf->st_nlink = 1;
+      stbuf->st_size = 6; // TODO
       LOG(INFO) << "OzoneFSGetattr: " << LOG_KEY(path_str)
                 << " is a normal file.";
       return 0;
@@ -120,8 +129,8 @@ int OzoneFSGetattr(const char *path, struct stat *stbuf,
 }
 
 int OzoneFSReaddir(const char *path, void *buf, fuse_fill_dir_t filler,
-                    off_t offset, struct fuse_file_info *fi,
-                    enum fuse_readdir_flags flags) {
+                   off_t offset, struct fuse_file_info *fi,
+                   enum fuse_readdir_flags flags) {
   (void)offset;
   (void)fi;
   (void)flags;
@@ -145,31 +154,54 @@ int OzoneFSReaddir(const char *path, void *buf, fuse_fill_dir_t filler,
 int OzoneFSOpen(const char *path, struct fuse_file_info *fi) {
   LOG(INFO) << "OzoneFSOpen" << LOG_KEY(path);
 
-  if ((fi->flags & O_ACCMODE) != O_RDONLY){
+  if ((fi->flags & O_ACCMODE) != O_RDONLY) {
     LOG(WARNING) << "OzoneFSOpen: " << LOG_KEY(path) << " is not read only.";
     return -EACCES;
   }
 
+  fi->fh = 4;
+
   return 0;
 }
 
+std::string readFileData(const std::string &path) {
+  std::ifstream file(path);
+  std::string content((std::istreambuf_iterator<char>(file)),
+                      std::istreambuf_iterator<char>());
+
+  return content;
+}
+
 int OzoneFSRead(const char *path, char *buf, size_t size, off_t offset,
-                 struct fuse_file_info *fi) {
+                struct fuse_file_info *fi) {
   const std::string path_str(path);
-  LOG(INFO) << "OzoneFSRead" << LOG_KEY(path_str);
+  LOG(INFO) << "OzoneFSRead" << LOG_KEY(path_str) << LOG_KEY(size)
+            << LOG_KEY(offset);
 
   const auto &files = ListAllFiles();
   for (const auto &file : files) {
-      if(file == path_str) {
-          CopyFile(file, path_str);
+    if ("/" + file == path_str) {
+      std::string tmpfile = std::tmpnam(nullptr);
+      CopyFile(file, tmpfile);
+
+      const std::string d = readFileData(tmpfile);
+      const auto n =
+          std::min(size, std::filesystem::file_size(tmpfile) - offset);
+
+      LOG(INFO) << "OzoneFSRead: " << LOG_KEY(path_str) << LOG_KEY(size)
+                << LOG_KEY(offset) << LOG_KEY(n);
+      for (size_t i = 0; i < n; ++i) {
+        LOG(INFO) << LOG_KEY(static_cast<int>(d[i + offset]))
+                  << LOG_KEY(i + offset);
+        // buf[i] = 'a';
+        buf[i] = static_cast<char>(d[i + offset]);
       }
+      buf[n - 1] = '\0';
+      return n;
+    }
   }
 
-  (void)fi;
-
-  size = 0;
-
-  return size;
+  return 0;
 }
 
 const struct fuse_operations ozonefs_oper = {
