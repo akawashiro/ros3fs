@@ -3,6 +3,7 @@
 // This program can be distributed under the terms of the GNU GPLv2.
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #define FUSE_USE_VERSION 31
 
@@ -55,7 +56,7 @@ struct MetaData {
   uint64_t size;
 };
 
-std::vector<std::string> ListAllFiles() {
+std::vector<MetaData> ListAllFiles() {
   using json = nlohmann::json;
 
   std::string exec_out = std::tmpnam(nullptr);
@@ -70,9 +71,9 @@ std::vector<std::string> ListAllFiles() {
   std::ifstream f(exec_out);
   json data = json::parse(f);
 
-  std::vector<std::string> result;
+  std::vector<MetaData> result;
   for (json::iterator it = data.begin(); it != data.end(); ++it) {
-    result.push_back((*it)["name"]);
+    result.push_back(MetaData{(*it)["name"], (*it)["dataSize"]});
   }
   return result;
 }
@@ -114,10 +115,10 @@ int OzoneFSGetattr(const char *path, struct stat *stbuf,
 
   const auto all_files = ListAllFiles();
   for (const auto &f : all_files) {
-    if ("/" + f == path_str) {
+    if ("/" + f.name == path_str) {
       stbuf->st_mode = S_IFREG | 0444;
       stbuf->st_nlink = 1;
-      stbuf->st_size = 6; // TODO
+      stbuf->st_size = f.size;
       LOG(INFO) << "OzoneFSGetattr: " << LOG_KEY(path_str)
                 << " is a normal file.";
       return 0;
@@ -145,7 +146,7 @@ int OzoneFSReaddir(const char *path, void *buf, fuse_fill_dir_t filler,
 
   const auto &files = ListAllFiles();
   for (const auto &file : files) {
-    filler(buf, file.c_str(), NULL, 0, static_cast<fuse_fill_dir_flags>(0));
+    filler(buf, file.name.c_str(), NULL, 0, static_cast<fuse_fill_dir_flags>(0));
   }
 
   return 0;
@@ -164,39 +165,36 @@ int OzoneFSOpen(const char *path, struct fuse_file_info *fi) {
   return 0;
 }
 
-std::string readFileData(const std::string &path) {
-  std::ifstream file(path);
-  std::string content((std::istreambuf_iterator<char>(file)),
-                      std::istreambuf_iterator<char>());
+std::vector<uint8_t> readFileData(const std::string &path) {
 
-  return content;
+  std::ifstream input(path, std::ios::binary);
+  std::vector<uint8_t> buffer(std::istreambuf_iterator<char>(input), {});
+
+  return buffer;
 }
 
 int OzoneFSRead(const char *path, char *buf, size_t size, off_t offset,
                 struct fuse_file_info *fi) {
   const std::string path_str(path);
+
   LOG(INFO) << "OzoneFSRead" << LOG_KEY(path_str) << LOG_KEY(size)
             << LOG_KEY(offset);
 
   const auto &files = ListAllFiles();
   for (const auto &file : files) {
-    if ("/" + file == path_str) {
+    if ("/" + file.name == path_str) {
       std::string tmpfile = std::tmpnam(nullptr);
-      CopyFile(file, tmpfile);
+      CopyFile(file.name, tmpfile);
 
-      const std::string d = readFileData(tmpfile);
+      const std::vector<uint8_t> d = readFileData(tmpfile);
       const auto n =
           std::min(size, std::filesystem::file_size(tmpfile) - offset);
 
       LOG(INFO) << "OzoneFSRead: " << LOG_KEY(path_str) << LOG_KEY(size)
                 << LOG_KEY(offset) << LOG_KEY(n);
       for (size_t i = 0; i < n; ++i) {
-        LOG(INFO) << LOG_KEY(static_cast<int>(d[i + offset]))
-                  << LOG_KEY(i + offset);
-        // buf[i] = 'a';
         buf[i] = static_cast<char>(d[i + offset]);
       }
-      buf[n - 1] = '\0';
       return n;
     }
   }
