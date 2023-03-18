@@ -34,7 +34,6 @@
  * fuse_opt_parse would attempt to free() them when the user specifies
  * different values on the command line.
  */
-
 namespace {
 struct options {
   int show_help;
@@ -56,27 +55,43 @@ struct MetaData {
   uint64_t size;
 };
 
-std::vector<MetaData> ListAllFiles() {
-  using json = nlohmann::json;
-
-  std::string exec_out = std::tmpnam(nullptr);
-  std::string exec_cmd = std::string("docker exec -it ozone-instance "
-                                     "./bin/ozone sh key ls /s3v/bucket1 > ") +
-                         exec_out;
-
-  LOG(INFO) << "exec_cmd: " << exec_cmd << " exec_out: " << exec_out;
-
-  CHECK_EQ(std::system(exec_cmd.c_str()), 0);
-
-  std::ifstream f(exec_out);
-  json data = json::parse(f);
-
-  std::vector<MetaData> result;
-  for (json::iterator it = data.begin(); it != data.end(); ++it) {
-    result.push_back(MetaData{(*it)["name"], (*it)["dataSize"]});
+class OzoneFSContext {
+public:
+  std::vector<MetaData> GetMetaData() {
+    if (!MetaDataCache) {
+      MetaDataCache = ListAllFiles();
+    }
+    return *MetaDataCache;
   }
-  return result;
-}
+
+private:
+  std::optional<std::vector<MetaData>> MetaDataCache = std::nullopt;
+
+  std::vector<MetaData> ListAllFiles() {
+    using json = nlohmann::json;
+
+    std::string exec_out = std::tmpnam(nullptr);
+    std::string exec_cmd =
+        std::string("docker exec -it ozone-instance "
+                    "./bin/ozone sh key ls /s3v/bucket1 > ") +
+        exec_out;
+
+    LOG(INFO) << "exec_cmd: " << exec_cmd << " exec_out: " << exec_out;
+
+    CHECK_EQ(std::system(exec_cmd.c_str()), 0);
+
+    std::ifstream f(exec_out);
+    json data = json::parse(f);
+
+    std::vector<MetaData> result;
+    for (json::iterator it = data.begin(); it != data.end(); ++it) {
+      result.push_back(MetaData{(*it)["name"], (*it)["dataSize"]});
+    }
+    return result;
+  }
+};
+
+OzoneFSContext context;
 
 void CopyFile(const std::string &src, const std::string &dst) {
   LOG(INFO) << LOG_KEY(src) << LOG_KEY(dst);
@@ -113,7 +128,7 @@ int OzoneFSGetattr(const char *path, struct stat *stbuf,
     return 0;
   }
 
-  const auto all_files = ListAllFiles();
+  const auto all_files = context.GetMetaData();
   for (const auto &f : all_files) {
     if ("/" + f.name == path_str) {
       stbuf->st_mode = S_IFREG | 0444;
@@ -144,9 +159,10 @@ int OzoneFSReaddir(const char *path, void *buf, fuse_fill_dir_t filler,
   filler(buf, ".", NULL, 0, static_cast<fuse_fill_dir_flags>(0));
   filler(buf, "..", NULL, 0, static_cast<fuse_fill_dir_flags>(0));
 
-  const auto &files = ListAllFiles();
+  const auto &files = context.GetMetaData();
   for (const auto &file : files) {
-    filler(buf, file.name.c_str(), NULL, 0, static_cast<fuse_fill_dir_flags>(0));
+    filler(buf, file.name.c_str(), NULL, 0,
+           static_cast<fuse_fill_dir_flags>(0));
   }
 
   return 0;
@@ -180,7 +196,7 @@ int OzoneFSRead(const char *path, char *buf, size_t size, off_t offset,
   LOG(INFO) << "OzoneFSRead" << LOG_KEY(path_str) << LOG_KEY(size)
             << LOG_KEY(offset);
 
-  const auto &files = ListAllFiles();
+  const auto &files = context.GetMetaData();
   for (const auto &file : files) {
     if ("/" + file.name == path_str) {
       std::string tmpfile = std::tmpnam(nullptr);
