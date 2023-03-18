@@ -6,13 +6,13 @@ mkdir -p ${OZONEFS_MOUNTPOINT_ANSWER}
 
 aws s3api --endpoint http://localhost:9878 create-bucket --bucket=bucket1
 
-echo "aaaaa" > ${OZONEFS_MOUNTPOINT_ANSWER}/testfile_a
-aws s3 --endpoint http://localhost:9878 cp --storage-class REDUCED_REDUNDANCY ${OZONEFS_MOUNTPOINT_ANSWER}/testfile_a  s3://bucket1/testfile_a
+for f in testfile_a testfile_b testfile_c dir_a/testfile_a dir_a/dir_a/testfile_a
+do
+    d=$(dirname ${f})
+    mkdir -p ${OZONEFS_MOUNTPOINT_ANSWER}/${d}
+    echo ${RANDOM} > ${OZONEFS_MOUNTPOINT_ANSWER}/${f}
+    echo "aaaaaa" >> ${OZONEFS_MOUNTPOINT_ANSWER}/${f}
+    aws s3 --endpoint http://localhost:9878 cp --storage-class REDUCED_REDUNDANCY ${OZONEFS_MOUNTPOINT_ANSWER}/${f}  s3://bucket1/${f}
+done
 
-echo "bbbbb" > ${OZONEFS_MOUNTPOINT_ANSWER}/testfile_b
-aws s3 --endpoint http://localhost:9878 cp --storage-class REDUCED_REDUNDANCY ${OZONEFS_MOUNTPOINT_ANSWER}/testfile_b s3://bucket1/testfile_b
-
-echo "ccccc" > ${OZONEFS_MOUNTPOINT_ANSWER}/testfile_c
-aws s3 --endpoint http://localhost:9878 cp --storage-class REDUCED_REDUNDANCY ${OZONEFS_MOUNTPOINT_ANSWER}/testfile_c s3://bucket1/testfile_c
-
-aws s3 --endpoint http://localhost:9878 ls s3://bucket1/testfile
+aws s3 --endpoint http://localhost:9878 ls s3://bucket1/
