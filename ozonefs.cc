@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <set>
 #define FUSE_USE_VERSION 31
 
 #include <assert.h>
@@ -50,16 +51,19 @@ void *OzoneFSInit(struct fuse_conn_info *conn, struct fuse_config *cfg) {
   return NULL;
 }
 
+enum Type { kFile, kDirectory };
+
 struct MetaData {
-  std::string name;
+  std::filesystem::path path;
   uint64_t size;
+  Type type;
 };
 
 class OzoneFSContext {
 public:
   std::vector<MetaData> GetMetaData() {
     if (!MetaDataCache) {
-      MetaDataCache = ListAllFiles();
+      MetaDataCache = FetchMetaData();
     }
     return *MetaDataCache;
   }
@@ -67,7 +71,7 @@ public:
 private:
   std::optional<std::vector<MetaData>> MetaDataCache = std::nullopt;
 
-  std::vector<MetaData> ListAllFiles() {
+  std::vector<MetaData> FetchMetaData() {
     using json = nlohmann::json;
 
     std::string exec_out = std::tmpnam(nullptr);
@@ -83,11 +87,37 @@ private:
     std::ifstream f(exec_out);
     json data = json::parse(f);
 
-    std::vector<MetaData> result;
+    std::set<std::filesystem::path> file_and_dirs;
+    std::vector<MetaData> result_files;
+
     for (json::iterator it = data.begin(); it != data.end(); ++it) {
-      result.push_back(MetaData{(*it)["name"], (*it)["dataSize"]});
+      std::filesystem::path p("/" + std::string((*it)["name"]));
+      CHECK(file_and_dirs.insert(p).second);
+      result_files.push_back(
+          MetaData{.path = p, .size = (*it)["dataSize"], .type = kFile});
     }
-    return result;
+
+    std::set<std::filesystem::path> dirs;
+    std::vector<MetaData> result_dirs;
+
+    for (const auto &f : result_files) {
+      std::filesystem::path p = f.path;
+      while (true) {
+        p = p.parent_path();
+        if (!dirs.insert(p).second) {
+          break;
+        }
+        CHECK(file_and_dirs.insert(p).second);
+        result_dirs.push_back(
+            MetaData{.path = p, .size = 0, .type = kDirectory});
+      }
+    }
+
+    result_files.insert(result_files.end(),
+                        std::make_move_iterator(result_dirs.begin()),
+                        std::make_move_iterator(result_dirs.end()));
+
+    return result_files;
   }
 };
 
@@ -130,7 +160,7 @@ int OzoneFSGetattr(const char *path, struct stat *stbuf,
 
   const auto all_files = context.GetMetaData();
   for (const auto &f : all_files) {
-    if ("/" + f.name == path_str) {
+    if (f.path == std::filesystem::path(path_str)) {
       stbuf->st_mode = S_IFREG | 0444;
       stbuf->st_nlink = 1;
       stbuf->st_size = f.size;
@@ -144,25 +174,25 @@ int OzoneFSGetattr(const char *path, struct stat *stbuf,
   return -ENOENT;
 }
 
-int OzoneFSReaddir(const char *path, void *buf, fuse_fill_dir_t filler,
+int OzoneFSReaddir(const char *path_c_str, void *buf, fuse_fill_dir_t filler,
                    off_t offset, struct fuse_file_info *fi,
                    enum fuse_readdir_flags flags) {
   (void)offset;
   (void)fi;
   (void)flags;
 
+  const std::filesystem::path path(path_c_str);
   LOG(INFO) << "OzoneFSReaddir" << LOG_KEY(path);
-
-  if (strcmp(path, "/") != 0)
-    return -ENOENT;
 
   filler(buf, ".", NULL, 0, static_cast<fuse_fill_dir_flags>(0));
   filler(buf, "..", NULL, 0, static_cast<fuse_fill_dir_flags>(0));
 
   const auto &files = context.GetMetaData();
   for (const auto &file : files) {
-    filler(buf, file.name.c_str(), NULL, 0,
-           static_cast<fuse_fill_dir_flags>(0));
+    if (file.path != "/" && file.path.parent_path() == path) {
+      filler(buf, file.path.c_str(), NULL, 0,
+             static_cast<fuse_fill_dir_flags>(0));
+    }
   }
 
   return 0;
@@ -198,9 +228,9 @@ int OzoneFSRead(const char *path, char *buf, size_t size, off_t offset,
 
   const auto &files = context.GetMetaData();
   for (const auto &file : files) {
-    if ("/" + file.name == path_str) {
+    if (file.path == std::filesystem::path(path_str)) {
       std::string tmpfile = std::tmpnam(nullptr);
-      CopyFile(file.name, tmpfile);
+      CopyFile(file.path.string().substr(1), tmpfile);
 
       const std::vector<uint8_t> d = readFileData(tmpfile);
       const auto n =
