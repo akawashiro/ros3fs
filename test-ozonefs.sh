@@ -43,10 +43,10 @@ echo "=========== grep -r test =========="
 OZONEFS_TMPFILE=$(mktemp)
 NORMALFS_TMPFILE=$(mktemp)
 pushd ozonefs_mountpoint
-grep -r bb . >& ${OZONEFS_TMPFILE}
+grep -r aa . | sort >& ${OZONEFS_TMPFILE}
 popd
 pushd ozonefs_mountpoint_answer
-grep -r bb . >& ${NORMALFS_TMPFILE}
+grep -r aa . |sort >& ${NORMALFS_TMPFILE}
 popd
 
 if [[ $(diff ${OZONEFS_TMPFILE} ${NORMALFS_TMPFILE}) ]]; then
