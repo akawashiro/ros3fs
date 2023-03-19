@@ -45,12 +45,16 @@
 namespace {
 struct options {
   int show_help;
+  const char *endpoint;
+  const char *bucket_name;
 } options;
 
 #define OPTION(t, p)                                                           \
   { t, offsetof(struct options, p), 1 }
 const struct fuse_opt option_spec[] = {
-    OPTION("-h", show_help), OPTION("--help", show_help), FUSE_OPT_END};
+    OPTION("-h", show_help), OPTION("--help", show_help),
+    OPTION("--endpoint=%s", endpoint), OPTION("--bucket_name=%s", bucket_name),
+    FUSE_OPT_END};
 
 void *OzoneFSInit(struct fuse_conn_info *conn, struct fuse_config *cfg) {
   (void)conn;
@@ -69,7 +73,10 @@ struct MetaData {
 class OzoneFSContext {
 public:
   OzoneFSContext(const std::string &endpoint, const std::string &bucket_name)
-      : endpoint_(endpoint), bucket_name_(bucket_name) {}
+      : endpoint_(endpoint), bucket_name_(bucket_name) {
+    CHECK_NE(endpoint, "");
+    CHECK_NE(bucket_name, "");
+  }
 
   std::vector<MetaData> GetMetaData() {
     if (!MetaDataCache) {
@@ -144,8 +151,8 @@ private:
         auto outcome = client.ListObjects(request);
 
         if (!outcome.IsSuccess()) {
-          LOG(FATAL) << "Error: ListObjects: "
-                     << outcome.GetError().GetMessage();
+          LOG(WARNING) << "Error: ListObjects: "
+                       << outcome.GetError().GetMessage();
         } else {
           LOG(INFO) << "Found " << outcome.GetResult().GetContents().size()
                     << " objects" << std::endl;
@@ -192,7 +199,13 @@ private:
   }
 };
 
-OzoneFSContext context("http://localhost:9878", "bucket1/");
+// This function must be called in main with valid arguments.
+// After that, you must call getContext() with "" and "" to get the context.
+OzoneFSContext &getContext(const std::string &endpoint,
+                           const std::string &bucket_name) {
+  static OzoneFSContext context(endpoint, bucket_name);
+  return context;
+}
 
 int OzoneFSGetattr(const char *path, struct stat *stbuf,
                    struct fuse_file_info *fi) {
@@ -213,7 +226,7 @@ int OzoneFSGetattr(const char *path, struct stat *stbuf,
     return 0;
   }
 
-  const auto all_files = context.GetMetaData();
+  const auto all_files = getContext("", "").GetMetaData();
   for (const auto &f : all_files) {
     if (f.path == std::filesystem::path(path_str)) {
       if (f.type == kDirectory) {
@@ -250,7 +263,7 @@ int OzoneFSReaddir(const char *path_c_str, void *buf, fuse_fill_dir_t filler,
   filler(buf, ".", NULL, 0, static_cast<fuse_fill_dir_flags>(0));
   filler(buf, "..", NULL, 0, static_cast<fuse_fill_dir_flags>(0));
 
-  const auto &files = context.GetMetaData();
+  const auto &files = getContext("", "").GetMetaData();
   for (const auto &file : files) {
     if (file.path != "/" && file.path.parent_path() == path) {
       // TODO: Refactor this.
@@ -295,11 +308,11 @@ int OzoneFSRead(const char *path, char *buf, size_t size, off_t offset,
   LOG(INFO) << "OzoneFSRead" << LOG_KEY(path_str) << LOG_KEY(size)
             << LOG_KEY(offset);
 
-  const auto &files = context.GetMetaData();
+  const auto &files = getContext("", "").GetMetaData();
   for (const auto &file : files) {
     if (file.path == std::filesystem::path(path_str)) {
       std::string tmpfile = std::tmpnam(nullptr);
-      context.CopyFile(file.path.string().substr(1), tmpfile);
+      getContext("", "").CopyFile(file.path.string().substr(1), tmpfile);
 
       const std::vector<uint8_t> d = readFileData(tmpfile);
       const auto n =
@@ -355,6 +368,10 @@ int main(int argc, char *argv[]) {
     assert(fuse_opt_add_arg(&args, "--help") == 0);
     args.argv[0][0] = '\0';
   }
+
+  CHECK_NE(std::string(options.endpoint), "");
+  CHECK_NE(std::string(options.bucket_name), "");
+  getContext(options.endpoint, options.bucket_name);
 
   ret = fuse_main(args.argc, args.argv, &ozonefs_oper, NULL);
   fuse_opt_free_args(&args);
