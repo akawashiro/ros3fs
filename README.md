@@ -33,6 +33,9 @@ hoge  testfile_a  testfile_b  testfile_c
 
 # Memo
 
+## TODO
+- Launch `ozone sh` from shell
+
 ## FUSE libraries
 - https://github.com/libfuse/libfuse
     - C
