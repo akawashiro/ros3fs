@@ -1,6 +1,8 @@
 #include <aws/core/Aws.h>
 #include <aws/core/utils/logging/LogLevel.h>
 #include <aws/s3/S3Client.h>
+#include <aws/s3/model/ListObjectsRequest.h>
+#include <aws/s3/model/GetObjectRequest.h>
 #include <iostream>
 
 using namespace Aws;
@@ -29,6 +31,45 @@ int main() {
       }
     } else {
       std::cout << "Failed with error: " << outcome.GetError() << std::endl;
+    }
+
+    const Aws::String bucketName = "bucket1/";
+    Aws::S3::Model::ListObjectsRequest request;
+    request.WithBucket(bucketName);
+
+    auto outcome_o = client.ListObjects(request);
+
+    if (!outcome.IsSuccess()) {
+      std::cerr << "Error: ListObjects: " << outcome.GetError().GetMessage()
+                << std::endl;
+    } else {
+      std::cout << "Found " << outcome_o.GetResult().GetContents().size()
+                << " objects" << std::endl;
+      Aws::Vector<Aws::S3::Model::Object> objects =
+          outcome_o.GetResult().GetContents();
+
+      for (Aws::S3::Model::Object &object : objects) {
+        std::cout << object.GetKey()
+                  << " object.GetSize() = " << object.GetSize() << std::endl;
+      }
+    }
+
+    Aws::S3::Model::GetObjectRequest request_g;
+    request_g.SetBucket("bucket1/");
+    request_g.SetKey("testfile_a");
+
+    Aws::S3::Model::GetObjectOutcome outcome_g =
+            client.GetObject(request_g);
+
+    if (!outcome_g.IsSuccess()) {
+        const Aws::S3::S3Error &err = outcome.GetError();
+        std::cerr << "Error: GetObject: " <<
+                  err.GetExceptionName() << ": " << err.GetMessage() << std::endl;
+    }
+    else {
+        std::cout << "Successfully retrieved '" << "testfile_a" << "' from '"
+                  << "bucket1/" << "'." << std::endl;
+        outcome_g.GetResult().GetBody().rdbuf();
     }
   }
 

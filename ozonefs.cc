@@ -26,6 +26,12 @@
 #include <nlohmann/json.hpp>
 #include <string>
 
+#include <aws/core/Aws.h>
+#include <aws/core/utils/logging/LogLevel.h>
+#include <aws/s3/S3Client.h>
+#include <aws/s3/model/GetObjectRequest.h>
+#include <aws/s3/model/ListObjectsRequest.h>
+
 #define LOG_KEY_VALUE(key, value) " " << key << "=" << value
 #define LOG_KEY(key) LOG_KEY_VALUE(#key, key)
 
@@ -62,6 +68,9 @@ struct MetaData {
 
 class OzoneFSContext {
 public:
+  OzoneFSContext(const std::string &endpoint, const std::string &bucket_name)
+      : endpoint_(endpoint), bucket_name_(bucket_name) {}
+
   std::vector<MetaData> GetMetaData() {
     if (!MetaDataCache) {
       MetaDataCache = FetchMetaData();
@@ -70,48 +79,93 @@ public:
   }
 
   void CopyFile(const std::string &src, const std::string &dst) {
-    LOG(INFO) << LOG_KEY(src) << LOG_KEY(dst);
+    {
+      using namespace Aws;
+      SDKOptions options;
+      options.loggingOptions.logLevel = Utils::Logging::LogLevel::Debug;
 
-    std::string ozone_get_cmd =
-        std::string("docker exec -it ozone-instance ./bin/ozone sh key get "
-                    "/s3v/bucket1/" +
-                    src + " " + dst);
-    LOG(INFO) << "ozone_get_cmd: " << ozone_get_cmd;
-    CHECK_EQ(std::system(ozone_get_cmd.c_str()), 0);
+      // The AWS SDK for C++ must be initialized by calling Aws::InitAPI.
+      InitAPI(options);
+      {
+        Aws::Client::ClientConfiguration config;
+        config.endpointOverride = endpoint_;
+        S3::S3Client client(config);
 
-    std::string docker_cp_cmd =
-        std::string("docker cp ozone-instance:" + dst + " " + dst);
-    LOG(INFO) << "docker_cp_cmd: " << docker_cp_cmd;
-    CHECK_EQ(std::system(docker_cp_cmd.c_str()), 0);
+        Aws::S3::Model::GetObjectRequest request;
+        request.SetBucket(bucket_name_);
+        request.SetKey(src);
+
+        Aws::S3::Model::GetObjectOutcome outcome = client.GetObject(request);
+
+        if (!outcome.IsSuccess()) {
+          const Aws::S3::S3Error &err = outcome.GetError();
+          LOG(FATAL) << "Error: GetObject: " << err.GetExceptionName() << ": "
+                     << err.GetMessage() << std::endl;
+        } else {
+          LOG(INFO) << "Successfully retrieved '" << src << "' from '"
+                    << "bucket1/"
+                    << "'." << std::endl;
+
+          std::ofstream ofs(dst);
+          ofs << outcome.GetResult().GetBody().rdbuf();
+        }
+      }
+
+      // Before the application terminates, the SDK must be shut down.
+      ShutdownAPI(options);
+    }
   }
 
 private:
+  const std::string endpoint_;
+  const std::string bucket_name_;
   std::optional<std::vector<MetaData>> MetaDataCache = std::nullopt;
 
   std::vector<MetaData> FetchMetaData() {
-    using json = nlohmann::json;
-
-    std::string exec_out = std::tmpnam(nullptr);
-    std::string exec_cmd =
-        std::string("docker exec -it ozone-instance "
-                    "./bin/ozone sh key ls /s3v/bucket1 > ") +
-        exec_out;
-
-    LOG(INFO) << "exec_cmd: " << exec_cmd << " exec_out: " << exec_out;
-
-    CHECK_EQ(std::system(exec_cmd.c_str()), 0);
-
-    std::ifstream f(exec_out);
-    json data = json::parse(f);
-
     std::set<std::filesystem::path> file_and_dirs;
     std::vector<MetaData> result_files;
 
-    for (json::iterator it = data.begin(); it != data.end(); ++it) {
-      std::filesystem::path p("/" + std::string((*it)["name"]));
-      CHECK(file_and_dirs.insert(p).second);
-      result_files.push_back(
-          MetaData{.path = p, .size = (*it)["dataSize"], .type = kFile});
+    {
+      using namespace Aws;
+      SDKOptions options;
+      options.loggingOptions.logLevel = Utils::Logging::LogLevel::Debug;
+
+      // The AWS SDK for C++ must be initialized by calling Aws::InitAPI.
+      InitAPI(options);
+      {
+        Aws::Client::ClientConfiguration config;
+        config.endpointOverride = endpoint_;
+        S3::S3Client client(config);
+
+        const Aws::String bucketName = bucket_name_;
+        Aws::S3::Model::ListObjectsRequest request;
+        request.WithBucket(bucketName);
+
+        auto outcome = client.ListObjects(request);
+
+        if (!outcome.IsSuccess()) {
+          LOG(FATAL) << "Error: ListObjects: "
+                     << outcome.GetError().GetMessage();
+        } else {
+          LOG(INFO) << "Found " << outcome.GetResult().GetContents().size()
+                    << " objects" << std::endl;
+          Aws::Vector<Aws::S3::Model::Object> objects =
+              outcome.GetResult().GetContents();
+
+          for (Aws::S3::Model::Object &object : objects) {
+            LOG(INFO) << object.GetKey()
+                      << " object.GetSize() = " << object.GetSize()
+                      << std::endl;
+            result_files.push_back(
+                MetaData{.path = "/" + object.GetKey(),
+                         .size = static_cast<uint64_t>(object.GetSize()),
+                         .type = kFile});
+          }
+        }
+      }
+
+      // Before the application terminates, the SDK must be shut down.
+      ShutdownAPI(options);
     }
 
     std::set<std::filesystem::path> dirs;
@@ -138,7 +192,7 @@ private:
   }
 };
 
-OzoneFSContext context;
+OzoneFSContext context("http://localhost:9878", "bucket1/");
 
 int OzoneFSGetattr(const char *path, struct stat *stbuf,
                    struct fuse_file_info *fi) {

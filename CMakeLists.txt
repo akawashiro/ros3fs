@@ -439,7 +439,7 @@ target_include_directories(hello_fs PRIVATE ${LIBFUSE3_INCLUDE_DIRS})
 target_compile_options(hello_fs PUBLIC -Wall -Werror)
 
 add_executable(ozonefs ozonefs.cc)
-target_link_libraries(ozonefs ${LIBFUSE3_LIBRARIES} glog  nlohmann_json::nlohmann_json)
+target_link_libraries(ozonefs ${AWSSDK_LINK_LIBRARIES} ${LIBFUSE3_LIBRARIES} glog  nlohmann_json::nlohmann_json)
 target_include_directories(ozonefs PRIVATE ${LIBFUSE3_INCLUDE_DIRS})
 target_compile_options(ozonefs PUBLIC -Wall -Werror)
 
