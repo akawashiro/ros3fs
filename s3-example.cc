@@ -16,7 +16,9 @@ int main() {
   // The AWS SDK for C++ must be initialized by calling Aws::InitAPI.
   InitAPI(options);
   {
-    S3::S3Client client;
+    Aws::Client::ClientConfiguration config;
+    config.endpointOverride = "http://localhost:9878";
+    S3::S3Client client(config);
 
     auto outcome = client.ListBuckets();
     if (outcome.IsSuccess()) {
