@@ -1,3 +1,5 @@
 build
 compile_commands.json
 .cache
+aws-sdk-cpp
+aws-sdk-cpp-install
