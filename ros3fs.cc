@@ -44,15 +44,15 @@
  * different values on the command line.
  */
 namespace {
-struct options {
+struct ROS3FSOptions {
   int show_help;
   const char *endpoint;
   const char *bucket_name;
   const char *cache_dir;
-} options;
+} ROS3FSOptions;
 
 #define OPTION(t, p)                                                           \
-  { t, offsetof(struct options, p), 1 }
+  { t, offsetof(struct ROS3FSOptions, p), 1 }
 const struct fuse_opt option_spec[] = {OPTION("-h", show_help),
                                        OPTION("--help", show_help),
                                        OPTION("--endpoint=%s", endpoint),
@@ -60,7 +60,17 @@ const struct fuse_opt option_spec[] = {OPTION("-h", show_help),
                                        OPTION("--cache_dir=%s", cache_dir),
                                        FUSE_OPT_END};
 
-void *OzoneFSInit(struct fuse_conn_info *conn, struct fuse_config *cfg) {
+void show_help(const char *progname) {
+  std::cout << "usage: " << progname << " [options] <mountpoint>" << std::endl
+            << std::endl
+            << "File-system specific options:" << std::endl
+            << "    --endpoint=URL         S3 endpoint" << std::endl
+            << "    --bucket_name=NAME     S3 bucket name" << std::endl
+            << "    --cache_dir=PATH       Cache directory" << std::endl
+            << std::endl;
+}
+
+void *ROS3FSInit(struct fuse_conn_info *conn, struct fuse_config *cfg) {
   (void)conn;
   cfg->kernel_cache = 1;
   return NULL;
@@ -99,11 +109,11 @@ std::vector<MetaData> DeserializeMetaData(const std::string &json) {
   return meta_datas;
 }
 
-class OzoneFSContext {
+class ROS3FSContext {
 public:
-  OzoneFSContext(OzoneFSContext const &) = delete;
-  void operator=(OzoneFSContext const &) = delete;
-  static OzoneFSContext &GetContext() { return GetContextImpl("", "", ""); }
+  ROS3FSContext(ROS3FSContext const &) = delete;
+  void operator=(ROS3FSContext const &) = delete;
+  static ROS3FSContext &GetContext() { return GetContextImpl("", "", ""); }
   static void InitContext(const std::string &endpoint,
                           const std::string &bucket_name,
                           const std::filesystem::path &cache_dir) {
@@ -172,8 +182,8 @@ private:
                          std::map<std::filesystem::path, MetaData>>>
       MetaDataCache = std::nullopt;
 
-  OzoneFSContext(const std::string &endpoint, const std::string &bucket_name,
-                 const std::filesystem::path &cache_dir)
+  ROS3FSContext(const std::string &endpoint, const std::string &bucket_name,
+                const std::filesystem::path &cache_dir)
       : endpoint_(endpoint), bucket_name_(bucket_name),
         cache_dir_(std::filesystem::canonical(cache_dir)),
         meta_data_path_(std::filesystem::canonical(cache_dir) /
@@ -181,15 +191,15 @@ private:
     CHECK_NE(endpoint, "");
     CHECK_NE(bucket_name, "");
     CHECK(std::filesystem::exists(cache_dir));
-    LOG(INFO) << "OzoneFSContext initialized with endpoint=" << endpoint
+    LOG(INFO) << "ROS3FSContext initialized with endpoint=" << endpoint
               << " bucket_name=" << bucket_name
               << " cache_dir=" << std::filesystem::canonical(cache_dir);
   }
 
-  static OzoneFSContext &
-  GetContextImpl(const std::string &endpoint, const std::string &bucket_name,
-                 const std::filesystem::path &cache_dir) {
-    static OzoneFSContext context(endpoint, bucket_name, cache_dir);
+  static ROS3FSContext &GetContextImpl(const std::string &endpoint,
+                                       const std::string &bucket_name,
+                                       const std::filesystem::path &cache_dir) {
+    static ROS3FSContext context(endpoint, bucket_name, cache_dir);
     return context;
   }
 
@@ -284,9 +294,9 @@ private:
   }
 };
 
-int OzoneFSGetattr(const char *path_c_str, struct stat *stbuf,
-                   struct fuse_file_info *fi) {
-  LOG(INFO) << "OzoneFSGetattr" << LOG_KEY(path_c_str);
+int ROS3FSGetattr(const char *path_c_str, struct stat *stbuf,
+                  struct fuse_file_info *fi) {
+  LOG(INFO) << "ROS3FSGetattr" << LOG_KEY(path_c_str);
 
   (void)fi;
 
@@ -299,46 +309,46 @@ int OzoneFSGetattr(const char *path_c_str, struct stat *stbuf,
   if (path == "/") {
     stbuf->st_mode = S_IFDIR | 0444;
     stbuf->st_nlink = 2;
-    LOG(INFO) << "OzoneFSGetattr: " << LOG_KEY(path) << " is the root.";
+    LOG(INFO) << "ROS3FSGetattr: " << LOG_KEY(path) << " is the root.";
     return 0;
   }
 
-  const auto all_files = OzoneFSContext::GetContext().GetMetaData();
+  const auto all_files = ROS3FSContext::GetContext().GetMetaData();
   if (all_files.contains(path.parent_path()) &&
       all_files.at(path.parent_path()).contains(path)) {
     const auto &f = all_files.at(path.parent_path()).at(path);
     if (f.type == kDirectory) {
       stbuf->st_mode = S_IFDIR | 0444;
       stbuf->st_nlink = 2;
-      LOG(INFO) << "OzoneFSGetattr: " << LOG_KEY(path) << " is a directory.";
+      LOG(INFO) << "ROS3FSGetattr: " << LOG_KEY(path) << " is a directory.";
 
     } else {
       stbuf->st_mode = S_IFREG | 0444;
       stbuf->st_nlink = 1;
-      LOG(INFO) << "OzoneFSGetattr: " << LOG_KEY(path) << " is a normal file.";
+      LOG(INFO) << "ROS3FSGetattr: " << LOG_KEY(path) << " is a normal file.";
       stbuf->st_size = f.size;
     }
     return 0;
   }
 
-  LOG(INFO) << "OzoneFSGetattr: " << LOG_KEY(path) << " does not exist.";
+  LOG(INFO) << "ROS3FSGetattr: " << LOG_KEY(path) << " does not exist.";
   return -ENOENT;
 }
 
-int OzoneFSReaddir(const char *path_c_str, void *buf, fuse_fill_dir_t filler,
-                   off_t offset, struct fuse_file_info *fi,
-                   enum fuse_readdir_flags flags) {
+int ROS3FSReaddir(const char *path_c_str, void *buf, fuse_fill_dir_t filler,
+                  off_t offset, struct fuse_file_info *fi,
+                  enum fuse_readdir_flags flags) {
   (void)offset;
   (void)fi;
   (void)flags;
 
   const std::filesystem::path path(path_c_str);
-  LOG(INFO) << "OzoneFSReaddir" << LOG_KEY(path);
+  LOG(INFO) << "ROS3FSReaddir" << LOG_KEY(path);
 
   filler(buf, ".", NULL, 0, static_cast<fuse_fill_dir_flags>(0));
   filler(buf, "..", NULL, 0, static_cast<fuse_fill_dir_flags>(0));
 
-  const auto &metadata = OzoneFSContext::GetContext().GetMetaData();
+  const auto &metadata = ROS3FSContext::GetContext().GetMetaData();
   if (metadata.contains(path)) {
     const auto &files = metadata.at(path);
     for (const auto &file : files) {
@@ -348,7 +358,7 @@ int OzoneFSReaddir(const char *path_c_str, void *buf, fuse_fill_dir_t filler,
             path == "/"
                 ? file.second.path.string().substr(path.string().size())
                 : file.second.path.string().substr(path.string().size() + 1);
-        LOG(INFO) << "OzoneFSReaddir: Found " << LOG_KEY(file.second.path)
+        LOG(INFO) << "ROS3FSReaddir: Found " << LOG_KEY(file.second.path)
                   << " in " << LOG_KEY(path) << LOG_KEY(filler_str);
         filler(buf, filler_str.c_str(), NULL, 0,
                static_cast<fuse_fill_dir_flags>(0));
@@ -359,11 +369,11 @@ int OzoneFSReaddir(const char *path_c_str, void *buf, fuse_fill_dir_t filler,
   return 0;
 }
 
-int OzoneFSOpen(const char *path, struct fuse_file_info *fi) {
-  LOG(INFO) << "OzoneFSOpen" << LOG_KEY(path);
+int ROS3FSOpen(const char *path, struct fuse_file_info *fi) {
+  LOG(INFO) << "ROS3FSOpen" << LOG_KEY(path);
 
   if ((fi->flags & O_ACCMODE) != O_RDONLY) {
-    LOG(WARNING) << "OzoneFSOpen: " << LOG_KEY(path) << " is not read only.";
+    LOG(WARNING) << "ROS3FSOpen: " << LOG_KEY(path) << " is not read only.";
     return -EACCES;
   }
 
@@ -380,25 +390,24 @@ std::vector<uint8_t> readFileData(const std::string &path) {
   return buffer;
 }
 
-int OzoneFSRead(const char *path_c_str, char *buf, size_t size, off_t offset,
-                struct fuse_file_info *fi) {
+int ROS3FSRead(const char *path_c_str, char *buf, size_t size, off_t offset,
+               struct fuse_file_info *fi) {
   const std::filesystem::path path(path_c_str);
 
-  LOG(INFO) << "OzoneFSRead" << LOG_KEY(path) << LOG_KEY(size)
+  LOG(INFO) << "ROS3FSRead" << LOG_KEY(path) << LOG_KEY(size)
             << LOG_KEY(offset);
 
-  const auto &metadata = OzoneFSContext::GetContext().GetMetaData();
+  const auto &metadata = ROS3FSContext::GetContext().GetMetaData();
   if (metadata.contains(path.parent_path()) &&
       metadata.at(path.parent_path()).contains(path)) {
     const auto &file = metadata.at(path.parent_path()).at(path);
     std::string tmpfile = std::tmpnam(nullptr);
-    OzoneFSContext::GetContext().CopyFile(file.path.string().substr(1),
-                                          tmpfile);
+    ROS3FSContext::GetContext().CopyFile(file.path.string().substr(1), tmpfile);
 
     const std::vector<uint8_t> d = readFileData(tmpfile);
     const auto n = std::min(size, std::filesystem::file_size(tmpfile) - offset);
 
-    LOG(INFO) << "OzoneFSRead: " << LOG_KEY(path) << LOG_KEY(size)
+    LOG(INFO) << "ROS3FSRead: " << LOG_KEY(path) << LOG_KEY(size)
               << LOG_KEY(offset) << LOG_KEY(n);
     for (size_t i = 0; i < n; ++i) {
       buf[i] = static_cast<char>(d[i + offset]);
@@ -410,49 +419,49 @@ int OzoneFSRead(const char *path_c_str, char *buf, size_t size, off_t offset,
 }
 
 const struct fuse_operations ozonefs_oper = {
-    .getattr = OzoneFSGetattr,
-    .open = OzoneFSOpen,
-    .read = OzoneFSRead,
-    .readdir = OzoneFSReaddir,
-    .init = OzoneFSInit,
+    .getattr = ROS3FSGetattr,
+    .open = ROS3FSOpen,
+    .read = ROS3FSRead,
+    .readdir = ROS3FSReaddir,
+    .init = ROS3FSInit,
 };
-
-void show_help(const char *progname) {
-  printf("usage: %s [options] <mountpoint>\n\n", progname);
-  printf("File-system specific options:\n");
-}
 } // namespace
 
 int main(int argc, char *argv[]) {
+  google::InitGoogleLogging(argv[0]);
+
   int ret;
   struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
-
-  google::InitGoogleLogging(argv[0]);
 
   /* Set defaults -- we have to use strdup so that
      fuse_opt_parse can free the defaults if other
      values are specified */
 
-  /* Parse options */
-  if (fuse_opt_parse(&args, &options, option_spec, NULL) == -1)
+  ROS3FSOptions.bucket_name = strdup("");
+  ROS3FSOptions.endpoint = strdup("");
+  ROS3FSOptions.cache_dir = strdup("");
+
+  /* Parse ROS3FSOptions */
+  if (fuse_opt_parse(&args, &ROS3FSOptions, option_spec, NULL) == -1)
     return 1;
 
   /* When --help is specified, first print our own file-system
      specific help text, then signal fuse_main to show
-     additional help (by adding `--help` to the options again)
+     additional help (by adding `--help` to the ROS3FSOptions again)
      without usage: line (by setting argv[0] to the empty
      string) */
-  if (options.show_help) {
+  if (ROS3FSOptions.show_help) {
     show_help(argv[0]);
     assert(fuse_opt_add_arg(&args, "--help") == 0);
     args.argv[0][0] = '\0';
+    exit(0);
   }
 
-  CHECK_NE(std::string(options.endpoint), "");
-  CHECK_NE(std::string(options.bucket_name), "");
-  CHECK_NE(std::string(options.cache_dir), "");
-  OzoneFSContext::InitContext(options.endpoint, options.bucket_name,
-                              options.cache_dir);
+  CHECK_NE(std::string(ROS3FSOptions.endpoint), "");
+  CHECK_NE(std::string(ROS3FSOptions.bucket_name), "");
+  CHECK_NE(std::string(ROS3FSOptions.cache_dir), "");
+  ROS3FSContext::InitContext(ROS3FSOptions.endpoint, ROS3FSOptions.bucket_name,
+                             ROS3FSOptions.cache_dir);
 
   ret = fuse_main(args.argc, args.argv, &ozonefs_oper, NULL);
   fuse_opt_free_args(&args);

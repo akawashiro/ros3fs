@@ -3,3 +3,6 @@ compile_commands.json
 .cache
 aws-sdk-cpp
 aws-sdk-cpp-install
+docker-compose.yaml
+docker-config
+.gdb_history
