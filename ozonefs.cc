@@ -110,9 +110,17 @@ public:
     GetContextImpl(endpoint, bucket_name, cache_dir);
   }
 
-  std::vector<MetaData> GetMetaData() {
+  // Full directory path -> (Full directory or file path -> MetaData)
+  std::map<std::filesystem::path, std::map<std::filesystem::path, MetaData>>
+  GetMetaData() {
     if (!MetaDataCache) {
-      MetaDataCache = FetchMetaData();
+      const auto c = FetchMetaData();
+      std::map<std::filesystem::path, std::map<std::filesystem::path, MetaData>>
+          md;
+      for (const auto &m : c) {
+        md[m.path.parent_path()][m.path] = m;
+      }
+      MetaDataCache = md;
     }
     return *MetaDataCache;
   }
@@ -160,7 +168,9 @@ private:
   const std::string bucket_name_;
   const std::filesystem::path cache_dir_;
   const std::filesystem::path meta_data_path_;
-  std::optional<std::vector<MetaData>> MetaDataCache = std::nullopt;
+  std::optional<std::map<std::filesystem::path,
+                         std::map<std::filesystem::path, MetaData>>>
+      MetaDataCache = std::nullopt;
 
   OzoneFSContext(const std::string &endpoint, const std::string &bucket_name,
                  const std::filesystem::path &cache_dir)
@@ -274,9 +284,9 @@ private:
   }
 };
 
-int OzoneFSGetattr(const char *path, struct stat *stbuf,
+int OzoneFSGetattr(const char *path_c_str, struct stat *stbuf,
                    struct fuse_file_info *fi) {
-  LOG(INFO) << "OzoneFSGetattr" << LOG_KEY(path);
+  LOG(INFO) << "OzoneFSGetattr" << LOG_KEY(path_c_str);
 
   (void)fi;
 
@@ -285,35 +295,33 @@ int OzoneFSGetattr(const char *path, struct stat *stbuf,
   // Check https://linuxjm.osdn.jp/html/LDP_man-pages/man2/stat.2.html for
   // S_IFDIR and S_IFREG.
 
-  const std::string path_str(path);
-  if (path_str == "/") {
+  const std::filesystem::path path(path_c_str);
+  if (path == "/") {
     stbuf->st_mode = S_IFDIR | 0444;
     stbuf->st_nlink = 2;
-    LOG(INFO) << "OzoneFSGetattr: " << LOG_KEY(path_str) << " is the root.";
+    LOG(INFO) << "OzoneFSGetattr: " << LOG_KEY(path) << " is the root.";
     return 0;
   }
 
   const auto all_files = OzoneFSContext::GetContext().GetMetaData();
-  for (const auto &f : all_files) {
-    if (f.path == std::filesystem::path(path_str)) {
-      if (f.type == kDirectory) {
-        stbuf->st_mode = S_IFDIR | 0444;
-        stbuf->st_nlink = 2;
-        LOG(INFO) << "OzoneFSGetattr: " << LOG_KEY(path_str)
-                  << " is a directory.";
+  if (all_files.contains(path.parent_path()) &&
+      all_files.at(path.parent_path()).contains(path)) {
+    const auto &f = all_files.at(path.parent_path()).at(path);
+    if (f.type == kDirectory) {
+      stbuf->st_mode = S_IFDIR | 0444;
+      stbuf->st_nlink = 2;
+      LOG(INFO) << "OzoneFSGetattr: " << LOG_KEY(path) << " is a directory.";
 
-      } else {
-        stbuf->st_mode = S_IFREG | 0444;
-        stbuf->st_nlink = 1;
-        LOG(INFO) << "OzoneFSGetattr: " << LOG_KEY(path_str)
-                  << " is a normal file.";
-        stbuf->st_size = f.size;
-      }
-      return 0;
+    } else {
+      stbuf->st_mode = S_IFREG | 0444;
+      stbuf->st_nlink = 1;
+      LOG(INFO) << "OzoneFSGetattr: " << LOG_KEY(path) << " is a normal file.";
+      stbuf->st_size = f.size;
     }
+    return 0;
   }
 
-  LOG(INFO) << "OzoneFSGetattr: " << LOG_KEY(path_str) << " does not exist.";
+  LOG(INFO) << "OzoneFSGetattr: " << LOG_KEY(path) << " does not exist.";
   return -ENOENT;
 }
 
@@ -330,17 +338,21 @@ int OzoneFSReaddir(const char *path_c_str, void *buf, fuse_fill_dir_t filler,
   filler(buf, ".", NULL, 0, static_cast<fuse_fill_dir_flags>(0));
   filler(buf, "..", NULL, 0, static_cast<fuse_fill_dir_flags>(0));
 
-  const auto &files = OzoneFSContext::GetContext().GetMetaData();
-  for (const auto &file : files) {
-    if (file.path != "/" && file.path.parent_path() == path) {
-      // TODO: Refactor this.
-      std::string filler_str =
-          path == "/" ? file.path.string().substr(path.string().size())
-                      : file.path.string().substr(path.string().size() + 1);
-      LOG(INFO) << "OzoneFSReaddir: Found " << LOG_KEY(file.path) << " in "
-                << LOG_KEY(path) << LOG_KEY(filler_str);
-      filler(buf, filler_str.c_str(), NULL, 0,
-             static_cast<fuse_fill_dir_flags>(0));
+  const auto &metadata = OzoneFSContext::GetContext().GetMetaData();
+  if (metadata.contains(path)) {
+    const auto &files = metadata.at(path);
+    for (const auto &file : files) {
+      if (file.second.path != "/") {
+        // TODO: Refactor this.
+        std::string filler_str =
+            path == "/"
+                ? file.second.path.string().substr(path.string().size())
+                : file.second.path.string().substr(path.string().size() + 1);
+        LOG(INFO) << "OzoneFSReaddir: Found " << LOG_KEY(file.second.path)
+                  << " in " << LOG_KEY(path) << LOG_KEY(filler_str);
+        filler(buf, filler_str.c_str(), NULL, 0,
+               static_cast<fuse_fill_dir_flags>(0));
+      }
     }
   }
 
@@ -368,31 +380,30 @@ std::vector<uint8_t> readFileData(const std::string &path) {
   return buffer;
 }
 
-int OzoneFSRead(const char *path, char *buf, size_t size, off_t offset,
+int OzoneFSRead(const char *path_c_str, char *buf, size_t size, off_t offset,
                 struct fuse_file_info *fi) {
-  const std::string path_str(path);
+  const std::filesystem::path path(path_c_str);
 
-  LOG(INFO) << "OzoneFSRead" << LOG_KEY(path_str) << LOG_KEY(size)
+  LOG(INFO) << "OzoneFSRead" << LOG_KEY(path) << LOG_KEY(size)
             << LOG_KEY(offset);
 
-  const auto &files = OzoneFSContext::GetContext().GetMetaData();
-  for (const auto &file : files) {
-    if (file.path == std::filesystem::path(path_str)) {
-      std::string tmpfile = std::tmpnam(nullptr);
-      OzoneFSContext::GetContext().CopyFile(file.path.string().substr(1),
-                                            tmpfile);
+  const auto &metadata = OzoneFSContext::GetContext().GetMetaData();
+  if (metadata.contains(path.parent_path()) &&
+      metadata.at(path.parent_path()).contains(path)) {
+    const auto &file = metadata.at(path.parent_path()).at(path);
+    std::string tmpfile = std::tmpnam(nullptr);
+    OzoneFSContext::GetContext().CopyFile(file.path.string().substr(1),
+                                          tmpfile);
 
-      const std::vector<uint8_t> d = readFileData(tmpfile);
-      const auto n =
-          std::min(size, std::filesystem::file_size(tmpfile) - offset);
+    const std::vector<uint8_t> d = readFileData(tmpfile);
+    const auto n = std::min(size, std::filesystem::file_size(tmpfile) - offset);
 
-      LOG(INFO) << "OzoneFSRead: " << LOG_KEY(path_str) << LOG_KEY(size)
-                << LOG_KEY(offset) << LOG_KEY(n);
-      for (size_t i = 0; i < n; ++i) {
-        buf[i] = static_cast<char>(d[i + offset]);
-      }
-      return n;
+    LOG(INFO) << "OzoneFSRead: " << LOG_KEY(path) << LOG_KEY(size)
+              << LOG_KEY(offset) << LOG_KEY(n);
+    for (size_t i = 0; i < n; ++i) {
+      buf[i] = static_cast<char>(d[i + offset]);
     }
+    return n;
   }
 
   return 0;
