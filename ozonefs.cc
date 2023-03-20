@@ -53,10 +53,12 @@ struct options {
 
 #define OPTION(t, p)                                                           \
   { t, offsetof(struct options, p), 1 }
-const struct fuse_opt option_spec[] = {
-    OPTION("-h", show_help), OPTION("--help", show_help),
-    OPTION("--endpoint=%s", endpoint), OPTION("--bucket_name=%s", bucket_name),
-    FUSE_OPT_END};
+const struct fuse_opt option_spec[] = {OPTION("-h", show_help),
+                                       OPTION("--help", show_help),
+                                       OPTION("--endpoint=%s", endpoint),
+                                       OPTION("--bucket_name=%s", bucket_name),
+                                       OPTION("--cache_dir=%s", cache_dir),
+                                       FUSE_OPT_END};
 
 void *OzoneFSInit(struct fuse_conn_info *conn, struct fuse_config *cfg) {
   (void)conn;
@@ -71,6 +73,31 @@ struct MetaData {
   uint64_t size;
   Type type;
 };
+
+std::string SerializeMetaData(const std::vector<MetaData> &meta_datas) {
+  nlohmann::json j;
+  for (const auto &md : meta_datas) {
+    nlohmann::json j2;
+    j2["path"] = md.path;
+    j2["size"] = md.size;
+    j2["type"] = md.type;
+    j.push_back(j2);
+  }
+  return j.dump();
+}
+
+std::vector<MetaData> DeserializeMetaData(const std::string &json) {
+  std::vector<MetaData> meta_datas;
+  nlohmann::json j = nlohmann::json::parse(json);
+  for (const auto &j2 : j) {
+    MetaData md;
+    md.path = std::filesystem::path(j2["path"]);
+    md.size = j2["size"];
+    md.type = j2["type"];
+    meta_datas.push_back(md);
+  }
+  return meta_datas;
+}
 
 class OzoneFSContext {
 public:
@@ -132,14 +159,21 @@ private:
   const std::string endpoint_;
   const std::string bucket_name_;
   const std::filesystem::path cache_dir_;
+  const std::filesystem::path meta_data_path_;
   std::optional<std::vector<MetaData>> MetaDataCache = std::nullopt;
 
   OzoneFSContext(const std::string &endpoint, const std::string &bucket_name,
                  const std::filesystem::path &cache_dir)
-      : endpoint_(endpoint), bucket_name_(bucket_name), cache_dir_(cache_dir) {
+      : endpoint_(endpoint), bucket_name_(bucket_name),
+        cache_dir_(std::filesystem::canonical(cache_dir)),
+        meta_data_path_(std::filesystem::canonical(cache_dir) /
+                        "meta_data.json") {
     CHECK_NE(endpoint, "");
     CHECK_NE(bucket_name, "");
     CHECK(std::filesystem::exists(cache_dir));
+    LOG(INFO) << "OzoneFSContext initialized with endpoint=" << endpoint
+              << " bucket_name=" << bucket_name
+              << " cache_dir=" << std::filesystem::canonical(cache_dir);
   }
 
   static OzoneFSContext &
@@ -150,6 +184,13 @@ private:
   }
 
   std::vector<MetaData> FetchMetaData() {
+    if (std::filesystem::exists(meta_data_path_)) {
+      std::ifstream ifs(meta_data_path_);
+      std::string json((std::istreambuf_iterator<char>(ifs)),
+                       (std::istreambuf_iterator<char>()));
+      return DeserializeMetaData(json);
+    }
+
     std::set<std::filesystem::path> file_and_dirs;
     std::vector<MetaData> result_files;
 
@@ -223,6 +264,10 @@ private:
     result_files.insert(result_files.end(),
                         std::make_move_iterator(result_dirs.begin()),
                         std::make_move_iterator(result_dirs.end()));
+
+    LOG(INFO) << "Save metadata to " << meta_data_path_;
+    std::ofstream ofs(meta_data_path_);
+    ofs << SerializeMetaData(result_files);
 
     return result_files;
   }
@@ -393,7 +438,9 @@ int main(int argc, char *argv[]) {
 
   CHECK_NE(std::string(options.endpoint), "");
   CHECK_NE(std::string(options.bucket_name), "");
-  OzoneFSContext::InitContext(options.endpoint, options.bucket_name, options.cache_dir);
+  CHECK_NE(std::string(options.cache_dir), "");
+  OzoneFSContext::InitContext(options.endpoint, options.bucket_name,
+                              options.cache_dir);
 
   ret = fuse_main(args.argc, args.argv, &ozonefs_oper, NULL);
   fuse_opt_free_args(&args);
