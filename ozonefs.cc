@@ -30,7 +30,9 @@
 #include <aws/core/utils/logging/LogLevel.h>
 #include <aws/s3/S3Client.h>
 #include <aws/s3/model/GetObjectRequest.h>
+#include <aws/s3/model/HeadObjectRequest.h>
 #include <aws/s3/model/ListObjectsRequest.h>
+#include <aws/s3/model/ListObjectsV2Request.h>
 
 #define LOG_KEY_VALUE(key, value) " " << key << "=" << value
 #define LOG_KEY(key) LOG_KEY_VALUE(#key, key)
@@ -132,34 +134,72 @@ private:
     std::set<std::filesystem::path> file_and_dirs;
     std::vector<MetaData> result_files;
 
+    // {
+    //   using namespace Aws;
+    //   SDKOptions options;
+    //   options.loggingOptions.logLevel = Utils::Logging::LogLevel::Debug;
+    //
+    //   // The AWS SDK for C++ must be initialized by calling Aws::InitAPI.
+    //   InitAPI(options);
+    //   {
+    //     Aws::Client::ClientConfiguration config;
+    //     config.endpointOverride = endpoint_;
+    //     S3::S3Client client(config);
+    //
+    //     const Aws::String bucketName = bucket_name_;
+    //     Aws::S3::Model::ListObjectsRequest request;
+    //     request.WithBucket(bucketName);
+    //
+    //     auto outcome = client.ListObjects(request);
+    //
+    //     if (!outcome.IsSuccess()) {
+    //       LOG(WARNING) << "Error: ListObjects: "
+    //                    << outcome.GetError().GetMessage();
+    //     } else {
+    //       LOG(INFO) << "Found " << outcome.GetResult().GetContents().size()
+    //                 << " objects" << std::endl;
+    //       Aws::Vector<Aws::S3::Model::Object> objects =
+    //           outcome.GetResult().GetContents();
+    //
+    //       for (Aws::S3::Model::Object &object : objects) {
+    //         LOG(INFO) << object.GetKey()
+    //                   << " object.GetSize() = " << object.GetSize()
+    //                   << std::endl;
+    //         result_files.push_back(
+    //             MetaData{.path = "/" + object.GetKey(),
+    //                      .size = static_cast<uint64_t>(object.GetSize()),
+    //                      .type = kFile});
+    //       }
+    //     }
+    //   }
+    //
+    //   // Before the application terminates, the SDK must be shut down.
+    //   ShutdownAPI(options);
+    // }
+
     {
-      using namespace Aws;
-      SDKOptions options;
-      options.loggingOptions.logLevel = Utils::Logging::LogLevel::Debug;
+      Aws::SDKOptions options;
+      Aws::InitAPI(options);
 
-      // The AWS SDK for C++ must be initialized by calling Aws::InitAPI.
-      InitAPI(options);
-      {
-        Aws::Client::ClientConfiguration config;
-        config.endpointOverride = endpoint_;
-        S3::S3Client client(config);
+      Aws::Client::ClientConfiguration clientConfig;
+      clientConfig.endpointOverride = endpoint_;
+      Aws::S3::S3Client s3Client(clientConfig);
 
-        const Aws::String bucketName = bucket_name_;
-        Aws::S3::Model::ListObjectsRequest request;
-        request.WithBucket(bucketName);
+      Aws::S3::Model::ListObjectsV2Request objectsRequest;
+      objectsRequest.SetBucket(bucket_name_);
 
-        auto outcome = client.ListObjects(request);
+      Aws::S3::Model::ListObjectsV2Outcome objectsOutcome;
+      bool isTruncated = false;
+      std::string nextMarker;
 
-        if (!outcome.IsSuccess()) {
-          LOG(WARNING) << "Error: ListObjects: "
-                       << outcome.GetError().GetMessage();
-        } else {
-          LOG(INFO) << "Found " << outcome.GetResult().GetContents().size()
-                    << " objects" << std::endl;
-          Aws::Vector<Aws::S3::Model::Object> objects =
-              outcome.GetResult().GetContents();
+      do {
+        objectsOutcome = s3Client.ListObjectsV2(
+            objectsRequest.WithContinuationToken(nextMarker));
+        if (objectsOutcome.IsSuccess()) {
+          std::cout << "Objects in bucket: "
+                    << objectsOutcome.GetResult().GetKeyCount() << std::endl;
 
-          for (Aws::S3::Model::Object &object : objects) {
+          for (const auto &object : objectsOutcome.GetResult().GetContents()) {
             LOG(INFO) << object.GetKey()
                       << " object.GetSize() = " << object.GetSize()
                       << std::endl;
@@ -167,12 +207,44 @@ private:
                 MetaData{.path = "/" + object.GetKey(),
                          .size = static_cast<uint64_t>(object.GetSize()),
                          .type = kFile});
-          }
-        }
-      }
 
-      // Before the application terminates, the SDK must be shut down.
-      ShutdownAPI(options);
+            // Aws::S3::Model::HeadObjectRequest headRequest;
+            // headRequest.SetBucket("your-bucket-name");
+            // headRequest.SetKey(object.GetKey());
+            //
+            // Aws::S3::Model::HeadObjectOutcome headOutcome =
+            //     s3Client.HeadObject(headRequest);
+            // if (headOutcome.IsSuccess()) {
+            //   std::cout << "Object metadata: " << std::endl;
+            //   for (const auto &metadata :
+            //        headOutcome.GetResult().GetMetadata()) {
+            //     // std::cout << metadata.first << ": " << metadata.second
+            //     //           << std::endl;
+            //
+            //     LOG(INFO) << object.GetKey()
+            //               << " object.GetSize() = " << object.GetSize()
+            //               << std::endl;
+            //     result_files.push_back(
+            //         MetaData{.path = "/" + object.GetKey(),
+            //                  .size = static_cast<uint64_t>(object.GetSize()),
+            //                  .type = kFile});
+            //   }
+            // } else {
+            //   std::cout << "Error retrieving metadata for object: "
+            //             << object.GetKey() << std::endl;
+            // }
+          }
+
+          isTruncated = objectsOutcome.GetResult().GetIsTruncated();
+          nextMarker = objectsOutcome.GetResult().GetNextContinuationToken();
+        } else {
+          std::cout << "Error listing objects in bucket: "
+                    << objectsOutcome.GetError().GetMessage() << std::endl;
+          isTruncated = false;
+        }
+      } while (isTruncated);
+
+      Aws::ShutdownAPI(options);
     }
 
     std::set<std::filesystem::path> dirs;
