@@ -1,4 +1,6 @@
-# ozonefs
+# ros3fs
+ros3fs, Read Only S3 File System, is a Linux FUSE adapter for AWS S3 and S3
+compatible object storage. ros3fs focuses on speed, only speed.
 
 ## Launch ozone
 - Run `./launch-ozone.sh`.
@@ -15,19 +17,19 @@ docker exec -it ozone-instance ./bin/ozone sh volume info /s3v
 
 ## Build and use
 ```
-$ mkdir -p ./build/ozonefs_mountpoint
+$ mkdir -p ./build/ros3fs_mountpoint
 $ cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -S . -B build -G Ninja
 $ cmake --build build
-$ sudo ./build/ozonefs ./build/ozonefs_mountpoint --name="hoge" --contents="fuga" -f
+$ sudo ./build/ros3fs ./build/ros3fs_mountpoint --name="hoge" --contents="fuga" -f
 ```
 
 In another terminal,
 ```
 $ sudo su
-# ls build/ozonefs_mountpoint/
-ls: cannot access 'build/ozonefs_mountpoint/testfile_a': No such file or directory
-ls: cannot access 'build/ozonefs_mountpoint/testfile_b': No such file or directory
-ls: cannot access 'build/ozonefs_mountpoint/testfile_c': No such file or directory
+# ls build/ros3fs_mountpoint/
+ls: cannot access 'build/ros3fs_mountpoint/testfile_a': No such file or directory
+ls: cannot access 'build/ros3fs_mountpoint/testfile_b': No such file or directory
+ls: cannot access 'build/ros3fs_mountpoint/testfile_c': No such file or directory
 hoge  testfile_a  testfile_b  testfile_c
 ```
 
@@ -56,7 +58,7 @@ mkdir -p ./hello_fs_mountpoint
 sudo umount ./hello_fs_mountpoint
 sudo ./hello_fs ./hello_fs_mountpoint --name="hoge" --contents="fuga" -f
 docker exec -it ozone-instance ./bin/ozone sh key ls /s3v/bucket1
-n && sudo ./ozonefs ./hello_fs_mountpoint --name="hoge" --contents="fuga" -f
+n && sudo ./ros3fs ./hello_fs_mountpoint --name="hoge" --contents="fuga" -f
 ```
 
 ## Install AWS CLI

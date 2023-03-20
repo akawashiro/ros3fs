@@ -5,9 +5,8 @@ ninja
 popd
 
 set +e
-umount ./build/ozonefs_mountpoint
+umount ./build/ros3fs_mountpoint
 set -e
 
-mkdir -p ./build/ozonefs_mountpoint
-GLOG_logtostderr=1 ./build/ozonefs ./build/ozonefs_mountpoint -f -d -s --endpoint=http://localhost:9878 --bucket_name=bucket1/ --cache_dir=./build/ozonefs_cache_dir
-# gdb --args ./build/ozonefs ./build/ozonefs_mountpoint -f -d -s --endpoint=http://localhost:9878 --bucket_name=bucket1/ --cache_dir=./build/ozonefs_cache_dir
+mkdir -p ./build/ros3fs_mountpoint
+GLOG_logtostderr=1 ./build/ros3fs ./build/ros3fs_mountpoint -f -d -s --endpoint=http://localhost:9878 --bucket_name=bucket1/ --cache_dir=./build/ros3fs_cache_dir
