@@ -185,6 +185,7 @@ private:
 
   std::vector<MetaData> FetchMetaData() {
     if (std::filesystem::exists(meta_data_path_)) {
+      LOG(INFO) << "Loading meta data from " << meta_data_path_;
       std::ifstream ifs(meta_data_path_);
       std::string json((std::istreambuf_iterator<char>(ifs)),
                        (std::istreambuf_iterator<char>()));
