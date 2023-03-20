@@ -133,49 +133,6 @@ private:
     std::set<std::filesystem::path> file_and_dirs;
     std::vector<MetaData> result_files;
 
-    // {
-    //   using namespace Aws;
-    //   SDKOptions options;
-    //   options.loggingOptions.logLevel = Utils::Logging::LogLevel::Debug;
-    //
-    //   // The AWS SDK for C++ must be initialized by calling Aws::InitAPI.
-    //   InitAPI(options);
-    //   {
-    //     Aws::Client::ClientConfiguration config;
-    //     config.endpointOverride = endpoint_;
-    //     S3::S3Client client(config);
-    //
-    //     const Aws::String bucketName = bucket_name_;
-    //     Aws::S3::Model::ListObjectsRequest request;
-    //     request.WithBucket(bucketName).WithMarker("0");
-    //
-    //     auto outcome = client.ListObjects(request);
-    //
-    //     if (!outcome.IsSuccess()) {
-    //       LOG(WARNING) << "Error: ListObjects: "
-    //                    << outcome.GetError().GetMessage();
-    //     } else {
-    //       LOG(INFO) << "Found " << outcome.GetResult().GetContents().size()
-    //                 << " objects" << std::endl;
-    //       Aws::Vector<Aws::S3::Model::Object> objects =
-    //           outcome.GetResult().GetContents();
-    //
-    //       for (Aws::S3::Model::Object &object : objects) {
-    //         LOG(INFO) << object.GetKey()
-    //                   << " object.GetSize() = " << object.GetSize()
-    //                   << std::endl;
-    //         result_files.push_back(
-    //             MetaData{.path = "/" + object.GetKey(),
-    //                      .size = static_cast<uint64_t>(object.GetSize()),
-    //                      .type = kFile});
-    //       }
-    //     }
-    //   }
-    //
-    //   // Before the application terminates, the SDK must be shut down.
-    //   ShutdownAPI(options);
-    // }
-
     {
       Aws::SDKOptions options;
       Aws::InitAPI(options);
@@ -206,9 +163,6 @@ private:
                 objectsOutcome.GetResult().GetContents();
 
             for (const auto &object : objects) {
-              LOG(INFO) << object.GetKey()
-                        << " object.GetSize() = " << object.GetSize()
-                        << std::endl;
               result_files.push_back(
                   MetaData{.path = "/" + object.GetKey(),
                            .size = static_cast<uint64_t>(object.GetSize()),
