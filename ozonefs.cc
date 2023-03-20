@@ -32,7 +32,6 @@
 #include <aws/s3/model/GetObjectRequest.h>
 #include <aws/s3/model/HeadObjectRequest.h>
 #include <aws/s3/model/ListObjectsRequest.h>
-#include <aws/s3/model/ListObjectsV2Request.h>
 
 #define LOG_KEY_VALUE(key, value) " " << key << "=" << value
 #define LOG_KEY(key) LOG_KEY_VALUE(#key, key)
@@ -148,7 +147,7 @@ private:
     //
     //     const Aws::String bucketName = bucket_name_;
     //     Aws::S3::Model::ListObjectsRequest request;
-    //     request.WithBucket(bucketName);
+    //     request.WithBucket(bucketName).WithMarker("0");
     //
     //     auto outcome = client.ListObjects(request);
     //
@@ -181,69 +180,53 @@ private:
       Aws::SDKOptions options;
       Aws::InitAPI(options);
 
-      Aws::Client::ClientConfiguration clientConfig;
-      clientConfig.endpointOverride = endpoint_;
-      Aws::S3::S3Client s3Client(clientConfig);
+      {
+        Aws::Client::ClientConfiguration clientConfig;
+        clientConfig.endpointOverride = endpoint_;
+        Aws::S3::S3Client s3Client(clientConfig);
 
-      Aws::S3::Model::ListObjectsV2Request objectsRequest;
-      objectsRequest.SetBucket(bucket_name_);
+        Aws::S3::Model::ListObjectsRequest objectsRequest;
+        objectsRequest.SetBucket(bucket_name_);
 
-      Aws::S3::Model::ListObjectsV2Outcome objectsOutcome;
-      bool isTruncated = false;
-      std::string nextMarker;
+        Aws::S3::Model::ListObjectsOutcome objectsOutcome;
+        bool isTruncated = false;
+        std::string nextMarker;
 
-      do {
-        objectsOutcome = s3Client.ListObjectsV2(
-            objectsRequest.WithContinuationToken(nextMarker));
-        if (objectsOutcome.IsSuccess()) {
-          std::cout << "Objects in bucket: "
-                    << objectsOutcome.GetResult().GetKeyCount() << std::endl;
-
-          for (const auto &object : objectsOutcome.GetResult().GetContents()) {
-            LOG(INFO) << object.GetKey()
-                      << " object.GetSize() = " << object.GetSize()
-                      << std::endl;
-            result_files.push_back(
-                MetaData{.path = "/" + object.GetKey(),
-                         .size = static_cast<uint64_t>(object.GetSize()),
-                         .type = kFile});
-
-            // Aws::S3::Model::HeadObjectRequest headRequest;
-            // headRequest.SetBucket("your-bucket-name");
-            // headRequest.SetKey(object.GetKey());
-            //
-            // Aws::S3::Model::HeadObjectOutcome headOutcome =
-            //     s3Client.HeadObject(headRequest);
-            // if (headOutcome.IsSuccess()) {
-            //   std::cout << "Object metadata: " << std::endl;
-            //   for (const auto &metadata :
-            //        headOutcome.GetResult().GetMetadata()) {
-            //     // std::cout << metadata.first << ": " << metadata.second
-            //     //           << std::endl;
-            //
-            //     LOG(INFO) << object.GetKey()
-            //               << " object.GetSize() = " << object.GetSize()
-            //               << std::endl;
-            //     result_files.push_back(
-            //         MetaData{.path = "/" + object.GetKey(),
-            //                  .size = static_cast<uint64_t>(object.GetSize()),
-            //                  .type = kFile});
-            //   }
-            // } else {
-            //   std::cout << "Error retrieving metadata for object: "
-            //             << object.GetKey() << std::endl;
-            // }
+        do {
+          if (nextMarker != "") {
+            objectsRequest.SetMarker(nextMarker);
           }
+          objectsOutcome = s3Client.ListObjects(objectsRequest);
+          if (objectsOutcome.IsSuccess()) {
+            LOG(INFO) << "Objects in bucket: "
+                      << objectsOutcome.GetResult().GetContents().size()
+                      << std::endl;
 
-          isTruncated = objectsOutcome.GetResult().GetIsTruncated();
-          nextMarker = objectsOutcome.GetResult().GetNextContinuationToken();
-        } else {
-          std::cout << "Error listing objects in bucket: "
-                    << objectsOutcome.GetError().GetMessage() << std::endl;
-          isTruncated = false;
-        }
-      } while (isTruncated);
+            Aws::Vector<Aws::S3::Model::Object> objects =
+                objectsOutcome.GetResult().GetContents();
 
+            for (const auto &object : objects) {
+              LOG(INFO) << object.GetKey()
+                        << " object.GetSize() = " << object.GetSize()
+                        << std::endl;
+              result_files.push_back(
+                  MetaData{.path = "/" + object.GetKey(),
+                           .size = static_cast<uint64_t>(object.GetSize()),
+                           .type = kFile});
+            }
+
+            isTruncated = objectsOutcome.GetResult().GetIsTruncated();
+            nextMarker = objectsOutcome.GetResult().GetNextMarker();
+            LOG(INFO) << "Next marker: " << nextMarker << std::endl;
+          } else {
+            LOG(WARNING) << "Error listing objects in bucket: "
+                         << objectsOutcome.GetError().GetMessage() << std::endl;
+            isTruncated = false;
+          }
+        } while (isTruncated);
+
+        LOG(INFO) << "Done listing objects in bucket" << std::endl;
+      }
       Aws::ShutdownAPI(options);
     }
 
