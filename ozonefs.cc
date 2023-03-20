@@ -48,6 +48,7 @@ struct options {
   int show_help;
   const char *endpoint;
   const char *bucket_name;
+  const char *cache_dir;
 } options;
 
 #define OPTION(t, p)                                                           \
@@ -73,10 +74,13 @@ struct MetaData {
 
 class OzoneFSContext {
 public:
-  OzoneFSContext(const std::string &endpoint, const std::string &bucket_name)
-      : endpoint_(endpoint), bucket_name_(bucket_name) {
-    CHECK_NE(endpoint, "");
-    CHECK_NE(bucket_name, "");
+  OzoneFSContext(OzoneFSContext const &) = delete;
+  void operator=(OzoneFSContext const &) = delete;
+  static OzoneFSContext &GetContext() { return GetContextImpl("", "", ""); }
+  static void InitContext(const std::string &endpoint,
+                          const std::string &bucket_name,
+                          const std::filesystem::path &cache_dir) {
+    GetContextImpl(endpoint, bucket_name, cache_dir);
   }
 
   std::vector<MetaData> GetMetaData() {
@@ -127,7 +131,23 @@ public:
 private:
   const std::string endpoint_;
   const std::string bucket_name_;
+  const std::filesystem::path cache_dir_;
   std::optional<std::vector<MetaData>> MetaDataCache = std::nullopt;
+
+  OzoneFSContext(const std::string &endpoint, const std::string &bucket_name,
+                 const std::filesystem::path &cache_dir)
+      : endpoint_(endpoint), bucket_name_(bucket_name), cache_dir_(cache_dir) {
+    CHECK_NE(endpoint, "");
+    CHECK_NE(bucket_name, "");
+    CHECK(std::filesystem::exists(cache_dir));
+  }
+
+  static OzoneFSContext &
+  GetContextImpl(const std::string &endpoint, const std::string &bucket_name,
+                 const std::filesystem::path &cache_dir) {
+    static OzoneFSContext context(endpoint, bucket_name, cache_dir);
+    return context;
+  }
 
   std::vector<MetaData> FetchMetaData() {
     std::set<std::filesystem::path> file_and_dirs;
@@ -208,14 +228,6 @@ private:
   }
 };
 
-// This function must be called in main with valid arguments.
-// After that, you must call getContext() with "" and "" to get the context.
-OzoneFSContext &getContext(const std::string &endpoint,
-                           const std::string &bucket_name) {
-  static OzoneFSContext context(endpoint, bucket_name);
-  return context;
-}
-
 int OzoneFSGetattr(const char *path, struct stat *stbuf,
                    struct fuse_file_info *fi) {
   LOG(INFO) << "OzoneFSGetattr" << LOG_KEY(path);
@@ -235,7 +247,7 @@ int OzoneFSGetattr(const char *path, struct stat *stbuf,
     return 0;
   }
 
-  const auto all_files = getContext("", "").GetMetaData();
+  const auto all_files = OzoneFSContext::GetContext().GetMetaData();
   for (const auto &f : all_files) {
     if (f.path == std::filesystem::path(path_str)) {
       if (f.type == kDirectory) {
@@ -272,7 +284,7 @@ int OzoneFSReaddir(const char *path_c_str, void *buf, fuse_fill_dir_t filler,
   filler(buf, ".", NULL, 0, static_cast<fuse_fill_dir_flags>(0));
   filler(buf, "..", NULL, 0, static_cast<fuse_fill_dir_flags>(0));
 
-  const auto &files = getContext("", "").GetMetaData();
+  const auto &files = OzoneFSContext::GetContext().GetMetaData();
   for (const auto &file : files) {
     if (file.path != "/" && file.path.parent_path() == path) {
       // TODO: Refactor this.
@@ -317,11 +329,12 @@ int OzoneFSRead(const char *path, char *buf, size_t size, off_t offset,
   LOG(INFO) << "OzoneFSRead" << LOG_KEY(path_str) << LOG_KEY(size)
             << LOG_KEY(offset);
 
-  const auto &files = getContext("", "").GetMetaData();
+  const auto &files = OzoneFSContext::GetContext().GetMetaData();
   for (const auto &file : files) {
     if (file.path == std::filesystem::path(path_str)) {
       std::string tmpfile = std::tmpnam(nullptr);
-      getContext("", "").CopyFile(file.path.string().substr(1), tmpfile);
+      OzoneFSContext::GetContext().CopyFile(file.path.string().substr(1),
+                                            tmpfile);
 
       const std::vector<uint8_t> d = readFileData(tmpfile);
       const auto n =
@@ -380,7 +393,7 @@ int main(int argc, char *argv[]) {
 
   CHECK_NE(std::string(options.endpoint), "");
   CHECK_NE(std::string(options.bucket_name), "");
-  getContext(options.endpoint, options.bucket_name);
+  OzoneFSContext::InitContext(options.endpoint, options.bucket_name, options.cache_dir);
 
   ret = fuse_main(args.argc, args.argv, &ozonefs_oper, NULL);
   fuse_opt_free_args(&args);
