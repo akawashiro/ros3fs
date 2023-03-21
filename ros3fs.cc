@@ -1,4 +1,4 @@
-// ozonefs: FUSE filesystem for Ozone
+// ros3fs: Read Only S3 File System
 // Copyright (C) 2023 Akira Kawata
 // This program can be distributed under the terms of the GNU GPLv2.
 
@@ -17,24 +17,14 @@
 #include <stdio.h>
 #include <string.h>
 
-#include <glog/logging.h>
-
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <nlohmann/json.hpp>
 #include <string>
 
-#include <aws/core/Aws.h>
-#include <aws/core/utils/logging/LogLevel.h>
-#include <aws/s3/S3Client.h>
-#include <aws/s3/model/GetObjectRequest.h>
-#include <aws/s3/model/HeadObjectRequest.h>
-#include <aws/s3/model/ListObjectsRequest.h>
-
-#define LOG_KEY_VALUE(key, value) " " << key << "=" << value
-#define LOG_KEY(key) LOG_KEY_VALUE(#key, key)
+#include "context.h"
+#include "log.h"
 
 /*
  * Command line options
@@ -70,228 +60,9 @@ void show_help(const char *progname) {
             << std::endl;
 }
 
-enum Type { kFile, kDirectory };
-
-struct MetaData {
-  std::filesystem::path path;
-  uint64_t size;
-  Type type;
-};
-
-std::string SerializeMetaData(const std::vector<MetaData> &meta_datas) {
-  nlohmann::json j;
-  for (const auto &md : meta_datas) {
-    nlohmann::json j2;
-    j2["path"] = md.path;
-    j2["size"] = md.size;
-    j2["type"] = md.type;
-    j.push_back(j2);
-  }
-  return j.dump();
-}
-
-std::vector<MetaData> DeserializeMetaData(const std::string &json) {
-  std::vector<MetaData> meta_datas;
-  nlohmann::json j = nlohmann::json::parse(json);
-  for (const auto &j2 : j) {
-    MetaData md;
-    md.path = std::filesystem::path(j2["path"]);
-    md.size = j2["size"];
-    md.type = j2["type"];
-    meta_datas.push_back(md);
-  }
-  return meta_datas;
-}
-
-class ROS3FSContext {
-public:
-  ROS3FSContext(ROS3FSContext const &) = delete;
-  void operator=(ROS3FSContext const &) = delete;
-  static ROS3FSContext &GetContext() { return GetContextImpl("", "", ""); }
-  static void InitContext(const std::string &endpoint,
-                          const std::string &bucket_name,
-                          const std::filesystem::path &cache_dir) {
-    GetContextImpl(endpoint, bucket_name, cache_dir);
-  }
-
-  // Full directory path -> (Full directory or file path -> MetaData)
-  const std::map<std::string, std::map<std::string, MetaData>> &GetMetaData() {
-    if (!MetaDataCache) {
-      const auto c = FetchMetaData();
-      std::map<std::string, std::map<std::string, MetaData>> md;
-      for (const auto &m : c) {
-        md[std::filesystem::canonical(m.path.parent_path()).string()]
-          [std::filesystem::canonical(m.path).string()] = m;
-      }
-      MetaDataCache = md;
-    }
-    return *MetaDataCache;
-  }
-
-  void CopyFile(const std::string &src, const std::string &dst) {
-    {
-      using namespace Aws;
-      SDKOptions options;
-      options.loggingOptions.logLevel = Utils::Logging::LogLevel::Debug;
-
-      // The AWS SDK for C++ must be initialized by calling Aws::InitAPI.
-      InitAPI(options);
-      {
-        Aws::Client::ClientConfiguration config;
-        config.endpointOverride = endpoint_;
-        S3::S3Client client(config);
-
-        Aws::S3::Model::GetObjectRequest request;
-        request.SetBucket(bucket_name_);
-        request.SetKey(src);
-
-        Aws::S3::Model::GetObjectOutcome outcome = client.GetObject(request);
-
-        if (!outcome.IsSuccess()) {
-          const Aws::S3::S3Error &err = outcome.GetError();
-          LOG(FATAL) << "Error: GetObject: " << err.GetExceptionName() << ": "
-                     << err.GetMessage() << std::endl;
-        } else {
-          LOG(INFO) << "Successfully retrieved '" << src << "' from '"
-                    << "bucket1/"
-                    << "'." << std::endl;
-
-          std::ofstream ofs(dst);
-          ofs << outcome.GetResult().GetBody().rdbuf();
-        }
-      }
-
-      // Before the application terminates, the SDK must be shut down.
-      ShutdownAPI(options);
-    }
-  }
-
-private:
-  const std::string endpoint_;
-  const std::string bucket_name_;
-  const std::filesystem::path cache_dir_;
-  const std::filesystem::path meta_data_path_;
-  std::optional<std::map<std::string, std::map<std::string, MetaData>>>
-      MetaDataCache = std::nullopt;
-
-  ROS3FSContext(const std::string &endpoint, const std::string &bucket_name,
-                const std::filesystem::path &cache_dir)
-      : endpoint_(endpoint), bucket_name_(bucket_name),
-        cache_dir_(std::filesystem::canonical(cache_dir)),
-        meta_data_path_(std::filesystem::canonical(cache_dir) /
-                        "meta_data.json") {
-    CHECK_NE(endpoint, "");
-    CHECK_NE(bucket_name, "");
-    CHECK(std::filesystem::exists(cache_dir));
-    LOG(INFO) << "ROS3FSContext initialized with endpoint=" << endpoint
-              << " bucket_name=" << bucket_name
-              << " cache_dir=" << std::filesystem::canonical(cache_dir);
-  }
-
-  static ROS3FSContext &GetContextImpl(const std::string &endpoint,
-                                       const std::string &bucket_name,
-                                       const std::filesystem::path &cache_dir) {
-    static ROS3FSContext context(endpoint, bucket_name, cache_dir);
-    return context;
-  }
-
-  std::vector<MetaData> FetchMetaData() {
-    if (std::filesystem::exists(meta_data_path_)) {
-      LOG(INFO) << "Loading meta data from " << meta_data_path_;
-      std::ifstream ifs(meta_data_path_);
-      std::string json((std::istreambuf_iterator<char>(ifs)),
-                       (std::istreambuf_iterator<char>()));
-      return DeserializeMetaData(json);
-    }
-
-    std::set<std::filesystem::path> file_and_dirs;
-    std::vector<MetaData> result_files;
-
-    {
-      Aws::SDKOptions options;
-      Aws::InitAPI(options);
-
-      {
-        Aws::Client::ClientConfiguration clientConfig;
-        clientConfig.endpointOverride = endpoint_;
-        Aws::S3::S3Client s3Client(clientConfig);
-
-        Aws::S3::Model::ListObjectsRequest objectsRequest;
-        objectsRequest.SetBucket(bucket_name_);
-
-        Aws::S3::Model::ListObjectsOutcome objectsOutcome;
-        bool isTruncated = false;
-        std::string nextMarker;
-
-        do {
-          if (nextMarker != "") {
-            objectsRequest.SetMarker(nextMarker);
-          }
-          objectsOutcome = s3Client.ListObjects(objectsRequest);
-          if (objectsOutcome.IsSuccess()) {
-            LOG(INFO) << "Objects in bucket: "
-                      << objectsOutcome.GetResult().GetContents().size()
-                      << std::endl;
-
-            Aws::Vector<Aws::S3::Model::Object> objects =
-                objectsOutcome.GetResult().GetContents();
-
-            for (const auto &object : objects) {
-              result_files.push_back(
-                  MetaData{.path = "/" + object.GetKey(),
-                           .size = static_cast<uint64_t>(object.GetSize()),
-                           .type = kFile});
-            }
-
-            isTruncated = objectsOutcome.GetResult().GetIsTruncated();
-            nextMarker = objectsOutcome.GetResult().GetNextMarker();
-            LOG(INFO) << "Next marker: " << nextMarker << std::endl;
-          } else {
-            LOG(WARNING) << "Error listing objects in bucket: "
-                         << objectsOutcome.GetError().GetMessage() << std::endl;
-            isTruncated = false;
-          }
-        } while (isTruncated);
-
-        LOG(INFO) << "Done listing objects in bucket" << std::endl;
-      }
-      Aws::ShutdownAPI(options);
-    }
-
-    std::set<std::filesystem::path> dirs;
-    std::vector<MetaData> result_dirs;
-
-    for (const auto &f : result_files) {
-      std::filesystem::path p = f.path;
-      while (true) {
-        p = p.parent_path();
-        if (!dirs.insert(p).second) {
-          break;
-        }
-        CHECK(file_and_dirs.insert(p).second);
-        result_dirs.push_back(
-            MetaData{.path = p, .size = 0, .type = kDirectory});
-      }
-    }
-
-    result_files.insert(result_files.end(),
-                        std::make_move_iterator(result_dirs.begin()),
-                        std::make_move_iterator(result_dirs.end()));
-
-    LOG(INFO) << "Save metadata to " << meta_data_path_;
-    std::ofstream ofs(meta_data_path_);
-    ofs << SerializeMetaData(result_files);
-
-    return result_files;
-  }
-};
-
 void *ROS3FSInit(struct fuse_conn_info *conn, struct fuse_config *cfg) {
   (void)conn;
   cfg->kernel_cache = 1;
-
-  // Fetch all meta data.
-  ROS3FSContext::GetContext().GetMetaData();
 
   return NULL;
 }
@@ -316,30 +87,20 @@ int ROS3FSGetattr(const char *path_c_str, struct stat *stbuf,
   }
 
   LOG(INFO) << "ROS3FSGetattr: " << LOG_KEY(path) << " is not the root.";
-  const auto all_files = ROS3FSContext::GetContext().GetMetaData();
-
-  // TODO: Here is the bottleneck.
-  // if (all_files.contains(path.parent_path()) &&
-  //     all_files.at(path.parent_path()).contains(path)) {
-  try {
-    const auto &f = all_files.at(std::filesystem::canonical(path.parent_path()))
-                        .at(std::filesystem::canonical(path));
-    LOG(INFO) << "Found " << LOG_KEY(path) << " in the cache.";
-
-    LOG(INFO) << "Get entry " << LOG_KEY(path) << " with size " << f.size
-              << " and type " << f.type;
-    if (f.type == kDirectory) {
+  const auto meta = ROS3FSContext::GetContext().GetAttr(path);
+  if (meta.has_value()) {
+    if (meta.value().type == FileType::kDirectory) {
       stbuf->st_mode = S_IFDIR | 0444;
       stbuf->st_nlink = 2;
       LOG(INFO) << "ROS3FSGetattr: " << LOG_KEY(path) << " is a directory.";
     } else {
       stbuf->st_mode = S_IFREG | 0444;
       stbuf->st_nlink = 1;
-      stbuf->st_size = f.size;
+      stbuf->st_size = meta.value().size;
       LOG(INFO) << "ROS3FSGetattr: " << LOG_KEY(path) << " is a normal file.";
     }
     return 0;
-  } catch (std::out_of_range &) {
+  } else {
     LOG(INFO) << "ROS3FSGetattr: " << LOG_KEY(path) << " does not exist.";
     return -ENOENT;
   }
@@ -358,22 +119,11 @@ int ROS3FSReaddir(const char *path_c_str, void *buf, fuse_fill_dir_t filler,
   filler(buf, ".", NULL, 0, static_cast<fuse_fill_dir_flags>(0));
   filler(buf, "..", NULL, 0, static_cast<fuse_fill_dir_flags>(0));
 
-  const auto metadata = ROS3FSContext::GetContext().GetMetaData();
-  if (metadata.contains(path)) {
-    const auto &files = metadata.at(std::filesystem::canonical(path));
-    for (const auto &file : files) {
-      if (file.second.path != "/") {
-        // TODO: Refactor this.
-        std::string filler_str =
-            path == "/"
-                ? file.second.path.string().substr(path.string().size())
-                : file.second.path.string().substr(path.string().size() + 1);
-        LOG(INFO) << "ROS3FSReaddir: Found " << LOG_KEY(file.second.path)
-                  << " in " << LOG_KEY(path) << LOG_KEY(filler_str);
-        filler(buf, filler_str.c_str(), NULL, 0,
-               static_cast<fuse_fill_dir_flags>(0));
-      }
-    }
+  const auto &metas = ROS3FSContext::GetContext().ReadDirectory(path);
+  for (const auto &m : metas) {
+    LOG(INFO) << "ROS3FSReaddir: Found " << LOG_KEY(m.name) << " in "
+              << LOG_KEY(path);
+    filler(buf, m.name.c_str(), NULL, 0, static_cast<fuse_fill_dir_flags>(0));
   }
 
   return 0;
@@ -407,15 +157,10 @@ int ROS3FSRead(const char *path_c_str, char *buf, size_t size, off_t offset,
   LOG(INFO) << "ROS3FSRead" << LOG_KEY(path) << LOG_KEY(size)
             << LOG_KEY(offset);
 
-  const auto &metadata = ROS3FSContext::GetContext().GetMetaData();
-  if (metadata.contains(std::filesystem::canonical(path.parent_path())) &&
-      metadata.at(std::filesystem::canonical(path.parent_path()))
-          .contains(std::filesystem::canonical(path))) {
-    const auto &file =
-        metadata.at(std::filesystem::canonical(path.parent_path()))
-            .at(std::filesystem::canonical(path));
+  std::optional<FileMetaData> meta = ROS3FSContext::GetContext().GetAttr(path);
+  if (meta.has_value() && meta.value().type == FileType::kFile) {
     std::string tmpfile = std::tmpnam(nullptr);
-    ROS3FSContext::GetContext().CopyFile(file.path.string().substr(1), tmpfile);
+    ROS3FSContext::GetContext().CopyFile(path.string().substr(1), tmpfile);
 
     const std::vector<uint8_t> d = readFileData(tmpfile);
     const auto n = std::min(size, std::filesystem::file_size(tmpfile) - offset);

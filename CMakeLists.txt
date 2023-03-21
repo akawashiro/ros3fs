@@ -438,7 +438,7 @@ target_link_libraries(hello_fs ${LIBFUSE3_LIBRARIES} glog)
 target_include_directories(hello_fs PRIVATE ${LIBFUSE3_INCLUDE_DIRS})
 target_compile_options(hello_fs PUBLIC -Wall -Werror)
 
-add_executable(ros3fs ros3fs.cc)
+add_executable(ros3fs ros3fs.cc context.cc)
 target_link_libraries(ros3fs ${AWSSDK_LINK_LIBRARIES} ${LIBFUSE3_LIBRARIES} glog nlohmann_json::nlohmann_json)
 target_include_directories(ros3fs PRIVATE ${LIBFUSE3_INCLUDE_DIRS})
 target_compile_options(ros3fs PUBLIC -Wall -Werror)
