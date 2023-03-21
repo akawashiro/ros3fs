@@ -176,7 +176,6 @@ ROS3FSContext::ROS3FSContext(const std::string &endpoint,
 
   LOG(INFO) << LOG_KEY(meta_datas.size());
   for (const auto &md : meta_datas) {
-    LOG(INFO) << LOG_KEY(md.path);
     // TODO: Handle empty directory.
     std::vector<std::filesystem::path> dirs(md.path.begin(), md.path.end());
     CHECK_GE(dirs.size(), static_cast<size_t>(1));
@@ -184,7 +183,6 @@ ROS3FSContext::ROS3FSContext(const std::string &endpoint,
 
     std::shared_ptr<Directory> current_dir = root_directory_;
     for (size_t i = 1; i < dirs.size(); i++) {
-      LOG(INFO) << LOG_KEY(dirs[i]) << LOG_KEY(dirs.size()) << LOG_KEY(i);
       if (dirs.size() != i + 1) {
         // Directory
         if (!current_dir->directories.contains(dirs[i])) {
@@ -195,7 +193,6 @@ ROS3FSContext::ROS3FSContext(const std::string &endpoint,
         }
         current_dir = current_dir->directories[dirs[i]];
       } else {
-        LOG(INFO);
         // File
         CHECK(!current_dir->directories.contains(dirs[i]));
         current_dir->directories[dirs[i]] = std::make_shared<Directory>(
@@ -204,7 +201,6 @@ ROS3FSContext::ROS3FSContext(const std::string &endpoint,
                                            .type = FileType::kFile}});
       }
     }
-    LOG(INFO) << "ObjectMetaData: " << md.path << " " << md.size;
   }
 }
 
@@ -218,8 +214,10 @@ ROS3FSContext::ReadDirectory(const std::filesystem::path &path) {
 
   std::shared_ptr<Directory> current_dir = root_directory_;
   for (size_t i = 0; i < dirs.size(); i++) {
+    VLOG(3) << LOG_KEY(dirs.size()) << LOG_KEY(i) << LOG_KEY(dirs[i])
+              << LOG_KEY(current_dir->directories.size())
+              << LOG_KEY(current_dir->self.name);
     if (dirs.size() == i + 1) {
-      LOG(INFO) << LOG_KEY(dirs.size()) << LOG_KEY(i);
       std::vector<FileMetaData> result;
       for (const auto &dir : current_dir->directories) {
         result.emplace_back(dir.second->self);
@@ -227,10 +225,11 @@ ROS3FSContext::ReadDirectory(const std::filesystem::path &path) {
       return result;
     }
 
-    if (!current_dir->directories.contains(dirs[i])) {
+    if (!current_dir->directories.contains(dirs[i + 1])) {
       return {};
     } else {
-      current_dir = current_dir->directories.at(dirs[i]);
+      VLOG(3) << LOG_KEY(dirs[i + 1]);
+      current_dir = current_dir->directories.at(dirs[i + 1]);
     }
   }
 
@@ -245,10 +244,12 @@ ROS3FSContext::GetAttr(const std::filesystem::path &path) {
 
   std::shared_ptr<Directory> current_dir = root_directory_;
   for (size_t i = 0; i < dirs.size(); i++) {
+    VLOG(3) << LOG_KEY(dirs[i]);
     if (dirs.size() == i + 1) {
       return current_dir->self;
     }
 
+    VLOG(3) << LOG_KEY(dirs[i + 1]);
     if (!current_dir->directories.contains(dirs[i + 1])) {
       return std::nullopt;
     } else {
