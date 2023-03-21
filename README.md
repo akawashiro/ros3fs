@@ -15,5 +15,5 @@ cmake --build build -- -j
 ## How to use
 ```
 # Note: You need '=' in the command
-./build/ros3fs <MOUNTPOINT> -f -d -s --endpoint=<ENDPOINT URL> --bucket_name=<BUCKET NAME ENDS WITH '/''> --cache_dir=<CACHE DIRECTORY>
+./build/ros3fs <MOUNTPOINT> -f -d -s --endpoint=<ENDPOINT URL> --bucket_name=<BUCKET NAME ENDS WITH '/'> --cache_dir=<CACHE DIRECTORY>
 ```
