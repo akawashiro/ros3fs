@@ -115,15 +115,13 @@ public:
   }
 
   // Full directory path -> (Full directory or file path -> MetaData)
-  const std::map<std::filesystem::path,
-                 std::map<std::filesystem::path, MetaData>> &
-  GetMetaData() {
+  const std::map<std::string, std::map<std::string, MetaData>> &GetMetaData() {
     if (!MetaDataCache) {
       const auto c = FetchMetaData();
-      std::map<std::filesystem::path, std::map<std::filesystem::path, MetaData>>
-          md;
+      std::map<std::string, std::map<std::string, MetaData>> md;
       for (const auto &m : c) {
-        md[m.path.parent_path()][m.path] = m;
+        md[std::filesystem::canonical(m.path.parent_path()).string()]
+          [std::filesystem::canonical(m.path).string()] = m;
       }
       MetaDataCache = md;
     }
@@ -173,8 +171,7 @@ private:
   const std::string bucket_name_;
   const std::filesystem::path cache_dir_;
   const std::filesystem::path meta_data_path_;
-  std::optional<std::map<std::filesystem::path,
-                         std::map<std::filesystem::path, MetaData>>>
+  std::optional<std::map<std::string, std::map<std::string, MetaData>>>
       MetaDataCache = std::nullopt;
 
   ROS3FSContext(const std::string &endpoint, const std::string &bucket_name,
@@ -325,7 +322,8 @@ int ROS3FSGetattr(const char *path_c_str, struct stat *stbuf,
   // if (all_files.contains(path.parent_path()) &&
   //     all_files.at(path.parent_path()).contains(path)) {
   try {
-    const auto &f = all_files.at(path.parent_path()).at(path);
+    const auto &f = all_files.at(std::filesystem::canonical(path.parent_path()))
+                        .at(std::filesystem::canonical(path));
     LOG(INFO) << "Found " << LOG_KEY(path) << " in the cache.";
 
     LOG(INFO) << "Get entry " << LOG_KEY(path) << " with size " << f.size
@@ -362,7 +360,7 @@ int ROS3FSReaddir(const char *path_c_str, void *buf, fuse_fill_dir_t filler,
 
   const auto metadata = ROS3FSContext::GetContext().GetMetaData();
   if (metadata.contains(path)) {
-    const auto &files = metadata.at(path);
+    const auto &files = metadata.at(std::filesystem::canonical(path));
     for (const auto &file : files) {
       if (file.second.path != "/") {
         // TODO: Refactor this.
@@ -410,9 +408,12 @@ int ROS3FSRead(const char *path_c_str, char *buf, size_t size, off_t offset,
             << LOG_KEY(offset);
 
   const auto &metadata = ROS3FSContext::GetContext().GetMetaData();
-  if (metadata.contains(path.parent_path()) &&
-      metadata.at(path.parent_path()).contains(path)) {
-    const auto &file = metadata.at(path.parent_path()).at(path);
+  if (metadata.contains(std::filesystem::canonical(path.parent_path())) &&
+      metadata.at(std::filesystem::canonical(path.parent_path()))
+          .contains(std::filesystem::canonical(path))) {
+    const auto &file =
+        metadata.at(std::filesystem::canonical(path.parent_path()))
+            .at(std::filesystem::canonical(path));
     std::string tmpfile = std::tmpnam(nullptr);
     ROS3FSContext::GetContext().CopyFile(file.path.string().substr(1), tmpfile);
 
