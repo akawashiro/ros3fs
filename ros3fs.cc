@@ -320,10 +320,13 @@ int ROS3FSGetattr(const char *path_c_str, struct stat *stbuf,
 
   LOG(INFO) << "ROS3FSGetattr: " << LOG_KEY(path) << " is not the root.";
   const auto all_files = ROS3FSContext::GetContext().GetMetaData();
-  if (all_files.contains(path.parent_path()) &&
-      all_files.at(path.parent_path()).contains(path)) {
-    LOG(INFO) << "Found " << LOG_KEY(path) << " in the cache.";
+
+  // TODO: Here is the bottleneck.
+  // if (all_files.contains(path.parent_path()) &&
+  //     all_files.at(path.parent_path()).contains(path)) {
+  try {
     const auto &f = all_files.at(path.parent_path()).at(path);
+    LOG(INFO) << "Found " << LOG_KEY(path) << " in the cache.";
 
     LOG(INFO) << "Get entry " << LOG_KEY(path) << " with size " << f.size
               << " and type " << f.type;
@@ -338,10 +341,10 @@ int ROS3FSGetattr(const char *path_c_str, struct stat *stbuf,
       LOG(INFO) << "ROS3FSGetattr: " << LOG_KEY(path) << " is a normal file.";
     }
     return 0;
+  } catch (std::out_of_range &) {
+    LOG(INFO) << "ROS3FSGetattr: " << LOG_KEY(path) << " does not exist.";
+    return -ENOENT;
   }
-
-  LOG(INFO) << "ROS3FSGetattr: " << LOG_KEY(path) << " does not exist.";
-  return -ENOENT;
 }
 
 int ROS3FSReaddir(const char *path_c_str, void *buf, fuse_fill_dir_t filler,
