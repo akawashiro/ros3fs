@@ -1,6 +1,6 @@
 # ros3fs
 ros3fs, Read Only S3 File System, is a Linux FUSE adapter for AWS S3 and S3
-compatible object storage. ros3fs focuses on speed, only speed.
+compatible object storage such as Apache Ozone. ros3fs focuses on speed, only speed.
 
 ## How to build
 ```
