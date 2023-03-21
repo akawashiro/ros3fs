@@ -161,7 +161,7 @@ ROS3FSContext::ROS3FSContext(const std::string &endpoint,
       cache_dir_(std::filesystem::canonical(cache_dir)),
       meta_data_path_(
           std::filesystem::canonical(cache_dir) /
-          ("meta_data_" + GetSHA256(endpoint + bucket_name) + ".json")) {
+          ("ros3fs_meta_data_" + GetSHA256(endpoint + bucket_name) + ".json")) {
   CHECK_NE(endpoint, "");
   CHECK_NE(bucket_name, "");
   CHECK(std::filesystem::exists(cache_dir));
