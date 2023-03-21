@@ -14,7 +14,10 @@
 #include <aws/s3/model/GetObjectRequest.h>
 #include <aws/s3/model/HeadObjectRequest.h>
 #include <aws/s3/model/ListObjectsRequest.h>
+
 #include <optional>
+
+#include "sha256.h"
 
 namespace {
 
@@ -156,8 +159,9 @@ ROS3FSContext::ROS3FSContext(const std::string &endpoint,
                              const std::filesystem::path &cache_dir)
     : endpoint_(endpoint), bucket_name_(bucket_name),
       cache_dir_(std::filesystem::canonical(cache_dir)),
-      meta_data_path_(std::filesystem::canonical(cache_dir) /
-                      "meta_data.json") {
+      meta_data_path_(
+          std::filesystem::canonical(cache_dir) /
+          ("meta_data_" + GetSHA256(endpoint + bucket_name) + ".json")) {
   CHECK_NE(endpoint, "");
   CHECK_NE(bucket_name, "");
   CHECK(std::filesystem::exists(cache_dir));
@@ -214,8 +218,8 @@ ROS3FSContext::ReadDirectory(const std::filesystem::path &path) {
   std::shared_ptr<Directory> current_dir = root_directory_;
   for (size_t i = 0; i < dirs.size(); i++) {
     VLOG(3) << LOG_KEY(dirs.size()) << LOG_KEY(i) << LOG_KEY(dirs[i])
-              << LOG_KEY(current_dir->directories.size())
-              << LOG_KEY(current_dir->self.name);
+            << LOG_KEY(current_dir->directories.size())
+            << LOG_KEY(current_dir->self.name);
     if (dirs.size() == i + 1) {
       std::vector<FileMetaData> result;
       for (const auto &dir : current_dir->directories) {

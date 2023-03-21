@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <openssl/sha.h>
 #include <set>
 #include <sys/stat.h>
 #define FUSE_USE_VERSION 31
@@ -19,11 +20,14 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
+#include <sstream>
 #include <string>
 
 #include "context.h"
 #include "log.h"
+#include "sha256.h"
 
 /*
  * Command line options
@@ -158,11 +162,18 @@ int ROS3FSRead(const char *path_c_str, char *buf, size_t size, off_t offset,
 
   std::optional<FileMetaData> meta = ROS3FSContext::GetContext().GetAttr(path);
   if (meta.has_value() && meta.value().type == FileType::kFile) {
-    std::string tmpfile = std::tmpnam(nullptr);
-    ROS3FSContext::GetContext().CopyFile(path.string().substr(1), tmpfile);
+    std::filesystem::path cache_file =
+        ROS3FSContext::GetContext().cache_dir() /
+        ("ros3fs_cache_file_" + GetSHA256(path.string()));
 
-    const std::vector<uint8_t> d = readFileData(tmpfile);
-    const auto n = std::min(size, std::filesystem::file_size(tmpfile) - offset);
+    // TODO: Should we copy in Context?
+    if (!std::filesystem::exists(cache_file)) {
+      ROS3FSContext::GetContext().CopyFile(path.string().substr(1), cache_file);
+    }
+
+    const std::vector<uint8_t> d = readFileData(cache_file);
+    const auto n =
+        std::min(size, std::filesystem::file_size(cache_file) - offset);
 
     LOG(INFO) << "ROS3FSRead: " << LOG_KEY(path) << LOG_KEY(size)
               << LOG_KEY(offset) << LOG_KEY(n);
@@ -217,6 +228,8 @@ int main(int argc, char *argv[]) {
   CHECK_NE(std::string(ROS3FSOptions.endpoint), "");
   CHECK_NE(std::string(ROS3FSOptions.bucket_name), "");
   CHECK_NE(std::string(ROS3FSOptions.cache_dir), "");
+  std::filesystem::create_directories(ROS3FSOptions.cache_dir);
+
   ROS3FSContext::InitContext(ROS3FSOptions.endpoint, ROS3FSOptions.bucket_name,
                              ROS3FSOptions.cache_dir);
 

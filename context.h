@@ -45,6 +45,7 @@ public:
   std::optional<FileMetaData> GetAttr(const std::filesystem::path &path);
 
   void CopyFile(const std::string &src, const std::string &dst);
+  std::filesystem::path cache_dir() const { return cache_dir_; }
 
 private:
   const std::string endpoint_;

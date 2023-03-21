@@ -433,7 +433,7 @@ find_package(AWSSDK REQUIRED COMPONENTS s3)
 add_executable(s3-example "s3-example.cc")
 target_link_libraries(s3-example ${AWSSDK_LINK_LIBRARIES})
 
-add_executable(ros3fs ros3fs.cc context.cc)
+add_executable(ros3fs ros3fs.cc sha256.cc context.cc)
 target_link_libraries(ros3fs ${AWSSDK_LINK_LIBRARIES} ${LIBFUSE3_LIBRARIES} glog nlohmann_json::nlohmann_json)
 target_include_directories(ros3fs PRIVATE ${LIBFUSE3_INCLUDE_DIRS})
 target_compile_options(ros3fs PUBLIC -Wall -Werror)
