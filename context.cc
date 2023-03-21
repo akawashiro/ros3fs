@@ -1,6 +1,5 @@
 // ros3fs: Read Only S3 File System
 // Copyright (C) 2023 Akira Kawata
-// This program can be distributed under the terms of the GNU GPLv2.
 
 #include "context.h"
 #include "glog/logging.h"
