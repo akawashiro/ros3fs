@@ -318,10 +318,15 @@ int ROS3FSGetattr(const char *path_c_str, struct stat *stbuf,
     return 0;
   }
 
+  LOG(INFO) << "ROS3FSGetattr: " << LOG_KEY(path) << " is not the root.";
   const auto all_files = ROS3FSContext::GetContext().GetMetaData();
   if (all_files.contains(path.parent_path()) &&
       all_files.at(path.parent_path()).contains(path)) {
+    LOG(INFO) << "Found " << LOG_KEY(path) << " in the cache.";
     const auto &f = all_files.at(path.parent_path()).at(path);
+
+    LOG(INFO) << "Get entry " << LOG_KEY(path) << " with size " << f.size
+              << " and type " << f.type;
     if (f.type == kDirectory) {
       stbuf->st_mode = S_IFDIR | 0444;
       stbuf->st_nlink = 2;
