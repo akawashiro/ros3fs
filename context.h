@@ -52,7 +52,7 @@ private:
   const std::string bucket_name_;
   const std::filesystem::path cache_dir_;
   const std::filesystem::path meta_data_path_;
-  Directory root_directory_;
+  std::shared_ptr<Directory> root_directory_;
 
   ROS3FSContext(const std::string &endpoint, const std::string &bucket_name,
                 const std::filesystem::path &cache_dir);

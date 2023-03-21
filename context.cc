@@ -3,6 +3,7 @@
 // This program can be distributed under the terms of the GNU GPLv2.
 
 #include "context.h"
+#include "glog/logging.h"
 
 #include <cstddef>
 #include <memory>
@@ -167,19 +168,23 @@ ROS3FSContext::ROS3FSContext(const std::string &endpoint,
 
   std::vector<ObjectMetaData> meta_datas = FetchObjectMetaData();
 
+  root_directory_ = std::make_shared<Directory>();
+
+  root_directory_->self.name = "/";
+  root_directory_->self.size = 0;
+  root_directory_->self.type = FileType::kDirectory;
+
+  LOG(INFO) << LOG_KEY(meta_datas.size());
   for (const auto &md : meta_datas) {
+    LOG(INFO) << LOG_KEY(md.path);
     // TODO: Handle empty directory.
     std::vector<std::filesystem::path> dirs(md.path.begin(), md.path.end());
     CHECK_GE(dirs.size(), static_cast<size_t>(1));
     CHECK_EQ(dirs[0], "/");
 
-    root_directory_.self.name = "/";
-    root_directory_.self.size = 0;
-    root_directory_.self.type = FileType::kDirectory;
-
-    std::shared_ptr<Directory> current_dir =
-        std::make_shared<Directory>(root_directory_);
+    std::shared_ptr<Directory> current_dir = root_directory_;
     for (size_t i = 1; i < dirs.size(); i++) {
+      LOG(INFO) << LOG_KEY(dirs[i]) << LOG_KEY(dirs.size()) << LOG_KEY(i);
       if (dirs.size() != i + 1) {
         // Directory
         if (!current_dir->directories.contains(dirs[i])) {
@@ -190,6 +195,7 @@ ROS3FSContext::ROS3FSContext(const std::string &endpoint,
         }
         current_dir = current_dir->directories[dirs[i]];
       } else {
+        LOG(INFO);
         // File
         CHECK(!current_dir->directories.contains(dirs[i]));
         current_dir->directories[dirs[i]] = std::make_shared<Directory>(
@@ -204,21 +210,25 @@ ROS3FSContext::ROS3FSContext(const std::string &endpoint,
 
 std::vector<FileMetaData>
 ROS3FSContext::ReadDirectory(const std::filesystem::path &path) {
+  LOG(INFO) << "ReadDirectory " << LOG_KEY(path);
+
   std::vector<std::filesystem::path> dirs(path.begin(), path.end());
   CHECK_GE(dirs.size(), static_cast<size_t>(1));
   CHECK_EQ(dirs[0], "/");
 
-  std::shared_ptr<Directory> current_dir =
-      std::make_shared<Directory>(root_directory_);
-  for (size_t i = 1; i < dirs.size(); i++) {
-    if (!current_dir->directories.contains(dirs[i])) {
-      return {};
-    } else if (dirs.size() == i + 1) {
+  std::shared_ptr<Directory> current_dir = root_directory_;
+  for (size_t i = 0; i < dirs.size(); i++) {
+    if (dirs.size() == i + 1) {
+      LOG(INFO) << LOG_KEY(dirs.size()) << LOG_KEY(i);
       std::vector<FileMetaData> result;
       for (const auto &dir : current_dir->directories) {
         result.emplace_back(dir.second->self);
       }
       return result;
+    }
+
+    if (!current_dir->directories.contains(dirs[i])) {
+      return {};
     } else {
       current_dir = current_dir->directories.at(dirs[i]);
     }
@@ -233,15 +243,16 @@ ROS3FSContext::GetAttr(const std::filesystem::path &path) {
   CHECK_GE(dirs.size(), static_cast<size_t>(1));
   CHECK_EQ(dirs[0], "/");
 
-  std::shared_ptr<Directory> current_dir =
-      std::make_shared<Directory>(root_directory_);
-  for (size_t i = 1; i < dirs.size(); i++) {
-    if (!current_dir->directories.contains(dirs[i])) {
-      return std::nullopt;
-    } else if (dirs.size() == i + 1) {
+  std::shared_ptr<Directory> current_dir = root_directory_;
+  for (size_t i = 0; i < dirs.size(); i++) {
+    if (dirs.size() == i + 1) {
       return current_dir->self;
+    }
+
+    if (!current_dir->directories.contains(dirs[i + 1])) {
+      return std::nullopt;
     } else {
-      current_dir = current_dir->directories.at(dirs[i]);
+      current_dir = current_dir->directories.at(dirs[i + 1]);
     }
   }
 
