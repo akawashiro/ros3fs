@@ -70,12 +70,6 @@ void show_help(const char *progname) {
             << std::endl;
 }
 
-void *ROS3FSInit(struct fuse_conn_info *conn, struct fuse_config *cfg) {
-  (void)conn;
-  cfg->kernel_cache = 1;
-  return NULL;
-}
-
 enum Type { kFile, kDirectory };
 
 struct MetaData {
@@ -121,7 +115,8 @@ public:
   }
 
   // Full directory path -> (Full directory or file path -> MetaData)
-  std::map<std::filesystem::path, std::map<std::filesystem::path, MetaData>>
+  const std::map<std::filesystem::path,
+                 std::map<std::filesystem::path, MetaData>> &
   GetMetaData() {
     if (!MetaDataCache) {
       const auto c = FetchMetaData();
@@ -294,6 +289,16 @@ private:
   }
 };
 
+void *ROS3FSInit(struct fuse_conn_info *conn, struct fuse_config *cfg) {
+  (void)conn;
+  cfg->kernel_cache = 1;
+
+  // Fetch all meta data.
+  ROS3FSContext::GetContext().GetMetaData();
+
+  return NULL;
+}
+
 int ROS3FSGetattr(const char *path_c_str, struct stat *stbuf,
                   struct fuse_file_info *fi) {
   LOG(INFO) << "ROS3FSGetattr" << LOG_KEY(path_c_str);
@@ -321,12 +326,11 @@ int ROS3FSGetattr(const char *path_c_str, struct stat *stbuf,
       stbuf->st_mode = S_IFDIR | 0444;
       stbuf->st_nlink = 2;
       LOG(INFO) << "ROS3FSGetattr: " << LOG_KEY(path) << " is a directory.";
-
     } else {
       stbuf->st_mode = S_IFREG | 0444;
       stbuf->st_nlink = 1;
-      LOG(INFO) << "ROS3FSGetattr: " << LOG_KEY(path) << " is a normal file.";
       stbuf->st_size = f.size;
+      LOG(INFO) << "ROS3FSGetattr: " << LOG_KEY(path) << " is a normal file.";
     }
     return 0;
   }
@@ -348,7 +352,7 @@ int ROS3FSReaddir(const char *path_c_str, void *buf, fuse_fill_dir_t filler,
   filler(buf, ".", NULL, 0, static_cast<fuse_fill_dir_flags>(0));
   filler(buf, "..", NULL, 0, static_cast<fuse_fill_dir_flags>(0));
 
-  const auto &metadata = ROS3FSContext::GetContext().GetMetaData();
+  const auto metadata = ROS3FSContext::GetContext().GetMetaData();
   if (metadata.contains(path)) {
     const auto &files = metadata.at(path);
     for (const auto &file : files) {

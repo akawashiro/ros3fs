@@ -9,7 +9,7 @@ cd ros3fs
 ./build-aws-sdk-cpp.sh
 mkdir build
 cmake -S . -B build
-cmake --build build
+cmake --build build -- -j
 ```
 
 ## How to use
