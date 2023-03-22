@@ -1,4 +1,7 @@
 # For developers
+## Options
+https://qiita.com/tkusumi/items/6dc204ba964264c72a9a#%E3%83%87%E3%83%90%E3%83%83%E3%82%B0%E3%81%AB%E4%BE%BF%E5%88%A9%E3%81%AA%E3%82%AA%E3%83%97%E3%82%B7%E3%83%A7%E3%83%B3%E3%82%92%E6%8C%87%E5%AE%9A%E3%81%99%E3%82%8B
+
 ## Launch ozone
 - Run `./launch-ozone.sh`.
 - See [https://ozone.apache.org/docs/1.3.0/start/startfromdockerhub.html](https://ozone.apache.org/docs/1.3.0/start/startfromdockerhub.html) for more details.

@@ -1,8 +1,9 @@
 #! /bin/bash -eu
-# Check http://localhost:9876/#!/ when you encounter errors.
+# Check http://${OZONE_OM_IP}:9876/#!/ when you encounter errors.
 
+OZONE_OM_IP=$(docker inspect --format='{{.NetworkSettings.Networks.bridge.Gateway}}' ozone-instance)
 TMPDIR=$(mktemp -d)
-for i in $(seq 1 3000000)
+for i in $(seq 1 30000)
 do
     echo ${RANDOM} > ${TMPDIR}/${i}
 
@@ -12,7 +13,7 @@ do
     fi
 done
 
-aws s3 --endpoint http://localhost:9878 cp --storage-class REDUCED_REDUNDANCY --recursive ${TMPDIR} s3://bucket1/many
-aws s3 --endpoint http://localhost:9878 ls s3://bucket1/
+aws s3 --endpoint http://${OZONE_OM_IP}:9878 cp --storage-class REDUCED_REDUNDANCY --recursive ${TMPDIR} s3://bucket1/many
+aws s3 --endpoint http://${OZONE_OM_IP}:9878 ls s3://bucket1/
 
 rm -rf ${TMPDIR}
