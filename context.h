@@ -1,6 +1,7 @@
 // ros3fs: Read Only S3 File System
 // Copyright (C) 2023 Akira Kawata
 
+#include <aws/core/Aws.h>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -53,9 +54,11 @@ private:
   const std::filesystem::path cache_dir_;
   const std::filesystem::path meta_data_path_;
   std::shared_ptr<Directory> root_directory_;
+  Aws::SDKOptions sdk_options_;
 
   ROS3FSContext(const std::string &endpoint, const std::string &bucket_name,
                 const std::filesystem::path &cache_dir);
+  ~ROS3FSContext();
 
   static ROS3FSContext &GetContextImpl(const std::string &endpoint,
                                        const std::string &bucket_name,

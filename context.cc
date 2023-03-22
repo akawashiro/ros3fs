@@ -48,39 +48,28 @@ std::vector<ObjectMetaData> DeserializeObjectMetaData(const std::string &json) {
 
 void ROS3FSContext::CopyFile(const std::string &src, const std::string &dst) {
   {
-    using namespace Aws;
-    SDKOptions options;
-    options.loggingOptions.logLevel = Utils::Logging::LogLevel::Debug;
+    Aws::Client::ClientConfiguration config;
+    config.endpointOverride = endpoint_;
+    Aws::S3::S3Client client(config);
 
-    // The AWS SDK for C++ must be initialized by calling Aws::InitAPI.
-    InitAPI(options);
-    {
-      Aws::Client::ClientConfiguration config;
-      config.endpointOverride = endpoint_;
-      S3::S3Client client(config);
+    Aws::S3::Model::GetObjectRequest request;
+    request.SetBucket(bucket_name_);
+    request.SetKey(src);
 
-      Aws::S3::Model::GetObjectRequest request;
-      request.SetBucket(bucket_name_);
-      request.SetKey(src);
+    Aws::S3::Model::GetObjectOutcome outcome = client.GetObject(request);
 
-      Aws::S3::Model::GetObjectOutcome outcome = client.GetObject(request);
+    if (!outcome.IsSuccess()) {
+      const Aws::S3::S3Error &err = outcome.GetError();
+      LOG(FATAL) << "Error: GetObject: " << err.GetExceptionName() << ": "
+                 << err.GetMessage() << std::endl;
+    } else {
+      LOG(INFO) << "Successfully retrieved '" << src << "' from '"
+                << "bucket1/"
+                << "'." << std::endl;
 
-      if (!outcome.IsSuccess()) {
-        const Aws::S3::S3Error &err = outcome.GetError();
-        LOG(FATAL) << "Error: GetObject: " << err.GetExceptionName() << ": "
-                   << err.GetMessage() << std::endl;
-      } else {
-        LOG(INFO) << "Successfully retrieved '" << src << "' from '"
-                  << "bucket1/"
-                  << "'." << std::endl;
-
-        std::ofstream ofs(dst);
-        ofs << outcome.GetResult().GetBody().rdbuf();
-      }
+      std::ofstream ofs(dst);
+      ofs << outcome.GetResult().GetBody().rdbuf();
     }
-
-    // Before the application terminates, the SDK must be shut down.
-    ShutdownAPI(options);
   }
 }
 
@@ -97,54 +86,48 @@ std::vector<ObjectMetaData> ROS3FSContext::FetchObjectMetaData() {
   std::vector<ObjectMetaData> result_files;
 
   {
-    Aws::SDKOptions options;
-    Aws::InitAPI(options);
+    Aws::Client::ClientConfiguration clientConfig;
+    clientConfig.endpointOverride = endpoint_;
+    Aws::S3::S3Client s3Client(clientConfig);
 
-    {
-      Aws::Client::ClientConfiguration clientConfig;
-      clientConfig.endpointOverride = endpoint_;
-      Aws::S3::S3Client s3Client(clientConfig);
+    Aws::S3::Model::ListObjectsRequest objectsRequest;
+    objectsRequest.SetBucket(bucket_name_);
 
-      Aws::S3::Model::ListObjectsRequest objectsRequest;
-      objectsRequest.SetBucket(bucket_name_);
+    Aws::S3::Model::ListObjectsOutcome objectsOutcome;
+    bool isTruncated = false;
+    std::string nextMarker;
 
-      Aws::S3::Model::ListObjectsOutcome objectsOutcome;
-      bool isTruncated = false;
-      std::string nextMarker;
+    do {
+      if (nextMarker != "") {
+        objectsRequest.SetMarker(nextMarker);
+      }
+      objectsOutcome = s3Client.ListObjects(objectsRequest);
+      if (objectsOutcome.IsSuccess()) {
+        LOG(INFO) << "Objects in bucket: "
+                  << objectsOutcome.GetResult().GetContents().size()
+                  << std::endl;
 
-      do {
-        if (nextMarker != "") {
-          objectsRequest.SetMarker(nextMarker);
+        Aws::Vector<Aws::S3::Model::Object> objects =
+            objectsOutcome.GetResult().GetContents();
+
+        for (const auto &object : objects) {
+          result_files.push_back(ObjectMetaData{
+              .path = "/" + object.GetKey(),
+              .size = static_cast<uint64_t>(object.GetSize()),
+          });
         }
-        objectsOutcome = s3Client.ListObjects(objectsRequest);
-        if (objectsOutcome.IsSuccess()) {
-          LOG(INFO) << "Objects in bucket: "
-                    << objectsOutcome.GetResult().GetContents().size()
-                    << std::endl;
 
-          Aws::Vector<Aws::S3::Model::Object> objects =
-              objectsOutcome.GetResult().GetContents();
+        isTruncated = objectsOutcome.GetResult().GetIsTruncated();
+        nextMarker = objectsOutcome.GetResult().GetNextMarker();
+        LOG(INFO) << "Next marker: " << nextMarker << std::endl;
+      } else {
+        LOG(WARNING) << "Error listing objects in bucket: "
+                     << objectsOutcome.GetError().GetMessage() << std::endl;
+        isTruncated = false;
+      }
+    } while (isTruncated);
 
-          for (const auto &object : objects) {
-            result_files.push_back(ObjectMetaData{
-                .path = "/" + object.GetKey(),
-                .size = static_cast<uint64_t>(object.GetSize()),
-            });
-          }
-
-          isTruncated = objectsOutcome.GetResult().GetIsTruncated();
-          nextMarker = objectsOutcome.GetResult().GetNextMarker();
-          LOG(INFO) << "Next marker: " << nextMarker << std::endl;
-        } else {
-          LOG(WARNING) << "Error listing objects in bucket: "
-                       << objectsOutcome.GetError().GetMessage() << std::endl;
-          isTruncated = false;
-        }
-      } while (isTruncated);
-
-      LOG(INFO) << "Done listing objects in bucket" << std::endl;
-    }
-    Aws::ShutdownAPI(options);
+    LOG(INFO) << "Done listing objects in bucket" << std::endl;
   }
 
   LOG(INFO) << "Save metadata to " << meta_data_path_;
@@ -205,6 +188,18 @@ ROS3FSContext::ROS3FSContext(const std::string &endpoint,
       }
     }
   }
+
+  sdk_options_.loggingOptions.logLevel = Aws::Utils::Logging::LogLevel::Debug;
+
+  LOG(INFO) << "Initialize AWS SDK API";
+  // The AWS SDK for C++ must be initialized by calling Aws::InitAPI.
+  Aws::InitAPI(sdk_options_);
+}
+
+ROS3FSContext::~ROS3FSContext() {
+  LOG(INFO) << "Shutdown AWS SDK API";
+  // Before the application terminates, the SDK must be shut down.
+  ShutdownAPI(sdk_options_);
 }
 
 std::vector<FileMetaData>
