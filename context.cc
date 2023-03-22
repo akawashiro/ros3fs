@@ -152,6 +152,10 @@ ROS3FSContext::ROS3FSContext(const std::string &endpoint,
             << " bucket_name=" << bucket_name
             << " cache_dir=" << std::filesystem::canonical(cache_dir);
 
+  LOG(INFO) << "Initialize AWS SDK API";
+  // The AWS SDK for C++ must be initialized by calling Aws::InitAPI.
+  Aws::InitAPI(sdk_options_);
+
   std::vector<ObjectMetaData> meta_datas = FetchObjectMetaData();
 
   root_directory_ = std::make_shared<Directory>();
@@ -190,10 +194,6 @@ ROS3FSContext::ROS3FSContext(const std::string &endpoint,
   }
 
   sdk_options_.loggingOptions.logLevel = Aws::Utils::Logging::LogLevel::Debug;
-
-  LOG(INFO) << "Initialize AWS SDK API";
-  // The AWS SDK for C++ must be initialized by calling Aws::InitAPI.
-  Aws::InitAPI(sdk_options_);
 }
 
 ROS3FSContext::~ROS3FSContext() {

@@ -12,5 +12,6 @@ set -e
 mkdir -p ./build/ros3fs_mountpoint
 mkdir -p ./build/ros3fs_cache_dir
 CACHE_DIR=$(mktemp -d)
+OZONE_OM_IP=$(docker inspect --format='{{.NetworkSettings.Networks.bridge.Gateway}}' ozone-instance)
 
-GLOG_logtostderr=1 ./build/ros3fs ./build/ros3fs_mountpoint -f -d -s --endpoint=http://localhost:9878 --bucket_name=bucket1/ --cache_dir=${CACHE_DIR}
+GLOG_logtostderr=1 ./build/ros3fs ./build/ros3fs_mountpoint -f -d --endpoint=http://${OZONE_OM_IP}:9878 --bucket_name=bucket1/ --cache_dir=${CACHE_DIR}

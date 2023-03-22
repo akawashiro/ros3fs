@@ -55,4 +55,7 @@ if [[ $(diff ${ROS3FS_TMPFILE} ${NORMALFS_TMPFILE}) ]]; then
     exit_code=1
 fi
 
+# TODO
+# find build/ros3fs_mountpoint -type f | xargs -n 1 -P 4 grep -in 1111 --with-filename
+
 exit ${exit_code}
