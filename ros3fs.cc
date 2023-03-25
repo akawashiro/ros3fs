@@ -54,13 +54,42 @@ const struct fuse_opt option_spec[] = {OPTION("-h", show_help),
                                        FUSE_OPT_END};
 
 void show_help(const char *progname) {
-  std::cout << "usage: " << progname << " [options] <mountpoint>" << std::endl
-            << std::endl
-            << "File-system specific options:" << std::endl
-            << "    --endpoint=URL         S3 endpoint" << std::endl
-            << "    --bucket_name=NAME     S3 bucket name" << std::endl
-            << "    --cache_dir=PATH       Cache directory" << std::endl
-            << std::endl;
+  std::cout
+      << "usage: " << progname << " [options] <mountpoint>" << std::endl
+      << "Example: " << progname
+      << " example_mountpoint_dir -f -d "
+         "--endpoint=http://localhost:9878 \\" << std::endl << "         --bucket_name=example_bucket/ "
+         "--cache_dir=example_cache_dir"
+      << std::endl
+      << std::endl
+      << "ros3fs specific options. '=' is mandatory.:" << std::endl
+      << "--endpoint=URL         S3 endpoint (required)" << std::endl
+      << "--bucket_name=NAME     S3 bucket name (required)" << std::endl
+      << "--cache_dir=PATH       Cache directory (required)" << std::endl
+      << std::endl
+      << "FUSE specific options:" << std::endl
+      << "-d, -odebug" << std::endl
+      << "    Causes debug information for subsequent FUSE library calls"
+      << std::endl
+      << "    to be output to stderr. Implies -f." << std::endl
+      << "-f" << std::endl
+      << "    If this is specified then fg will be set to 1 on success. "
+      << std::endl
+      << "    This flag indicates that the file system should not detach from "
+      << std::endl
+      << "    the controlling terminal and run in the foreground." << std::endl
+      << "-h, --help, -ho" << std::endl
+      << "    Print usage information for the options supported by "
+      << std::endl
+      << "    fuse_parse_cmdline()." << std::endl
+      << "-s" << std::endl
+      << "    If this is specified then mt will be set to 0 on success. "
+      << std::endl
+      << "    This flag indicates that the file system should be run "
+      << std::endl
+      << "    in multi-threaded mode. -s is currently ignored and mt will "
+         "always be 0."
+      << std::endl;
 }
 
 void *ROS3FSInit(struct fuse_conn_info *conn, struct fuse_config *cfg) {
@@ -223,6 +252,24 @@ int main(int argc, char *argv[]) {
     assert(fuse_opt_add_arg(&args, "--help") == 0);
     args.argv[0][0] = '\0';
     exit(0);
+  }
+
+  if (std::string(ROS3FSOptions.endpoint) == "") {
+    std::cerr << "--endpoint is not specified." << std::endl << std::endl;
+    show_help(argv[0]);
+    exit(1);
+  }
+
+  if (std::string(ROS3FSOptions.bucket_name) == "") {
+    std::cerr << "--bucket_name is not specified." << std::endl << std::endl;
+    show_help(argv[0]);
+    exit(1);
+  }
+
+  if (std::string(ROS3FSOptions.cache_dir) == "") {
+    std::cerr << "--cache_dir is not specified." << std::endl << std::endl;
+    show_help(argv[0]);
+    exit(1);
   }
 
   CHECK_NE(std::string(ROS3FSOptions.endpoint), "");
