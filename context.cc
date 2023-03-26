@@ -103,7 +103,7 @@ std::vector<ObjectMetaData> ROS3FSContext::FetchObjectMetaDataFromS3() {
     Aws::S3::Model::ListObjectsRequest objectsRequest;
     objectsRequest.SetBucket(bucket_name_);
     // TODO: Adjust the value of max keys watching performance.
-    objectsRequest.SetMaxKeys(100000);
+    objectsRequest.SetMaxKeys(1000);
 
     Aws::S3::Model::ListObjectsOutcome objectsOutcome;
     bool isTruncated = false;
