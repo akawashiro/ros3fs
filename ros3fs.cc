@@ -42,6 +42,7 @@ struct ROS3FSOptions {
   const char *endpoint;
   const char *bucket_name;
   const char *cache_dir;
+  int clear_cache;
   int update_metadata_period_seconds;
 } ROS3FSOptions;
 
@@ -53,6 +54,7 @@ const struct fuse_opt option_spec[] = {
     OPTION("--endpoint=%s", endpoint),
     OPTION("--bucket_name=%s", bucket_name),
     OPTION("--cache_dir=%s", cache_dir),
+    OPTION("--clear_cache", clear_cache),
     OPTION("--update_metadata_seconds=%d", update_metadata_period_seconds),
     FUSE_OPT_END};
 
@@ -71,6 +73,7 @@ void show_help(const char *progname) {
       << "--endpoint=URL         S3 endpoint (required)" << std::endl
       << "--bucket_name=NAME     S3 bucket name (required)" << std::endl
       << "--cache_dir=PATH       Cache directory (required)" << std::endl
+      << "--clear_cache          Clear cache files (optional)" << std::endl
       << "--update_metadata_seconds=SECONDS" << std::endl
       << "                       Update metadata period seconds (optional)"
       << std::endl
@@ -293,13 +296,15 @@ int main(int argc, char *argv[]) {
   std::filesystem::create_directories(cache_dir_root);
   std::filesystem::create_directories(cache_dir);
 
+  const bool clear_cache = ROS3FSOptions.clear_cache;
+
   const int update_metadata_seconds =
       ROS3FSOptions.update_metadata_period_seconds > 0
           ? ROS3FSOptions.update_metadata_period_seconds
           : 3600;
 
   ROS3FSContext::InitContext(ROS3FSOptions.endpoint, ROS3FSOptions.bucket_name,
-                             update_metadata_seconds, cache_dir);
+                             update_metadata_seconds, cache_dir, clear_cache);
 
   ret = fuse_main(args.argc, args.argv, &ozonefs_oper, NULL);
   fuse_opt_free_args(&args);

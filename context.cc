@@ -83,6 +83,8 @@ std::vector<ObjectMetaData> ROS3FSContext::FetchObjectMetaDataFromS3() {
 
     Aws::S3::Model::ListObjectsRequest objectsRequest;
     objectsRequest.SetBucket(bucket_name_);
+    // TODO: Adjust the value of max keys watching performance.
+    objectsRequest.SetMaxKeys(100000);
 
     Aws::S3::Model::ListObjectsOutcome objectsOutcome;
     bool isTruncated = false;
@@ -199,9 +201,19 @@ void ROS3FSContext::InitMetaData() {
 
 void ROS3FSContext::UpdateMetaDataLoop() {
   while (true) {
-    std::this_thread::sleep_for(std::chrono::seconds(update_metadata_seconds_));
+    {
+      std::unique_lock<std::mutex> lock(update_metadata_loop_mtx_);
+      update_metadata_loop_cv_.wait_for(
+          lock, std::chrono::seconds(update_metadata_seconds_));
+      if (update_metadata_loop_stop_) {
+        // TODO: Do we need this break? std::thread::join() automatically
+        // breaks, doesn't it?
+        break;
+      }
+    }
     LOG(INFO) << "FetchObjectMetaDataFromS3 start";
     const auto meta_datas = FetchObjectMetaDataFromS3();
+    LOG(INFO) << "FetchObjectMetaDataFromS3 end";
     {
       // Critical section start
       LOG(INFO) << "Try to lock meta_data_mutex_";
@@ -213,16 +225,17 @@ void ROS3FSContext::UpdateMetaDataLoop() {
       UpdateRootDir(meta_datas);
       // Critical section end
     }
-    LOG(INFO) << "FetchObjectMetaDataFromS3 end";
   }
 }
 
 ROS3FSContext::ROS3FSContext(const std::string &endpoint,
                              const std::string &bucket_name,
                              const int update_metadata_seconds,
-                             const std::filesystem::path &cache_dir)
+                             const std::filesystem::path &cache_dir,
+                             const bool clear_cache)
     : endpoint_(endpoint), bucket_name_(bucket_name),
       cache_dir_(std::filesystem::canonical(cache_dir)),
+      clear_cache_(clear_cache),
       lock_dir_(std::filesystem::canonical(cache_dir) / "lock"),
       update_metadata_seconds_(update_metadata_seconds),
       meta_data_path_(
@@ -239,6 +252,15 @@ ROS3FSContext::ROS3FSContext(const std::string &endpoint,
       << "Failed to create lock directory: " << lock_dir_
       << ". If you don't run other process to mount this bucket, please remove "
          "this directory and try again.";
+
+  if (clear_cache_) {
+    LOG(INFO) << "Clear cache files in " << cache_dir_;
+    for (const auto &entry : std::filesystem::directory_iterator(cache_dir_)) {
+      if (std::filesystem::canonical(entry.path()) != lock_dir_) {
+        std::filesystem::remove_all(entry.path());
+      }
+    }
+  }
 
   LOG(INFO) << "Initialize AWS SDK API";
   // The AWS SDK for C++ must be initialized by calling Aws::InitAPI.
@@ -264,8 +286,14 @@ ROS3FSContext::ROS3FSContext(const std::string &endpoint,
 }
 
 ROS3FSContext::~ROS3FSContext() {
-  LOG(INFO) << "Stop update_metadata_loop_thread_";
+  LOG(INFO) << "Stopping update_metadata_loop_thread_";
+  {
+    std::unique_lock<std::mutex> lk(update_metadata_loop_mtx_);
+    update_metadata_loop_stop_ = true;
+  }
+  update_metadata_loop_cv_.notify_all();
   update_metadata_loop_thread_.join();
+  LOG(INFO) << "Stopped update_metadata_loop_thread_";
 
   LOG(INFO) << "Shutdown AWS SDK API";
   // Before the application terminates, the SDK must be shut down.
