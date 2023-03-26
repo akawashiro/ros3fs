@@ -52,6 +52,7 @@ private:
   const std::string endpoint_;
   const std::string bucket_name_;
   const std::filesystem::path cache_dir_;
+  const std::filesystem::path lock_dir_;
   const std::filesystem::path meta_data_path_;
   std::shared_ptr<Directory> root_directory_;
   Aws::SDKOptions sdk_options_;

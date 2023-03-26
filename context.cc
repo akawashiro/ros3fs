@@ -142,6 +142,7 @@ ROS3FSContext::ROS3FSContext(const std::string &endpoint,
                              const std::filesystem::path &cache_dir)
     : endpoint_(endpoint), bucket_name_(bucket_name),
       cache_dir_(std::filesystem::canonical(cache_dir)),
+      lock_dir_(std::filesystem::canonical(cache_dir) / "lock"),
       meta_data_path_(
           std::filesystem::canonical(cache_dir) /
           ("ros3fs_meta_data_" + GetSHA256(endpoint + bucket_name) + ".json")) {
@@ -151,6 +152,11 @@ ROS3FSContext::ROS3FSContext(const std::string &endpoint,
   LOG(INFO) << "ROS3FSContext initialized with endpoint=" << endpoint
             << " bucket_name=" << bucket_name
             << " cache_dir=" << std::filesystem::canonical(cache_dir);
+
+  CHECK(std::filesystem::create_directory(lock_dir_))
+      << "Failed to create lock directory: " << lock_dir_
+      << ". If you don't run other process to mount this bucket, please remove "
+         "this directory and try again.";
 
   LOG(INFO) << "Initialize AWS SDK API";
   // The AWS SDK for C++ must be initialized by calling Aws::InitAPI.
@@ -200,6 +206,9 @@ ROS3FSContext::~ROS3FSContext() {
   LOG(INFO) << "Shutdown AWS SDK API";
   // Before the application terminates, the SDK must be shut down.
   ShutdownAPI(sdk_options_);
+
+  CHECK(std::filesystem::remove(lock_dir_))
+      << "Failed to remove lock directory: " << lock_dir_;
 }
 
 std::vector<FileMetaData>

@@ -58,7 +58,9 @@ void show_help(const char *progname) {
       << "usage: " << progname << " [options] <mountpoint>" << std::endl
       << "Example: " << progname
       << " example_mountpoint_dir -f -d "
-         "--endpoint=http://localhost:9878 \\" << std::endl << "         --bucket_name=example_bucket/ "
+         "--endpoint=http://localhost:9878 \\"
+      << std::endl
+      << "         --bucket_name=example_bucket/ "
          "--cache_dir=example_cache_dir"
       << std::endl
       << std::endl
@@ -275,10 +277,16 @@ int main(int argc, char *argv[]) {
   CHECK_NE(std::string(ROS3FSOptions.endpoint), "");
   CHECK_NE(std::string(ROS3FSOptions.bucket_name), "");
   CHECK_NE(std::string(ROS3FSOptions.cache_dir), "");
-  std::filesystem::create_directories(ROS3FSOptions.cache_dir);
+
+  std::filesystem::path cache_dir_root(ROS3FSOptions.cache_dir);
+  std::filesystem::path cache_dir(
+      cache_dir_root / GetSHA256(std::string(ROS3FSOptions.endpoint) +
+                                 ROS3FSOptions.bucket_name));
+  std::filesystem::create_directories(cache_dir_root);
+  std::filesystem::create_directories(cache_dir);
 
   ROS3FSContext::InitContext(ROS3FSOptions.endpoint, ROS3FSOptions.bucket_name,
-                             ROS3FSOptions.cache_dir);
+                             cache_dir);
 
   ret = fuse_main(args.argc, args.argv, &ozonefs_oper, NULL);
   fuse_opt_free_args(&args);
