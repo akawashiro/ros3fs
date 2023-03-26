@@ -20,11 +20,13 @@ struct FileMetaData {
   std::string name;
   uint64_t size;
   FileType type;
+  int64_t unix_time_millis;
 };
 
 struct ObjectMetaData {
   std::filesystem::path path;
   uint64_t size;
+  int64_t unix_time_millis;
 };
 
 struct Directory {
@@ -51,7 +53,7 @@ public:
   std::vector<FileMetaData> ReadDirectory(const std::filesystem::path &path);
   std::optional<FileMetaData> GetAttr(const std::filesystem::path &path);
 
-  std::vector<uint8_t> GetFileContents(const std::filesystem::path& path);
+  std::vector<uint8_t> GetFileContents(const std::filesystem::path &path);
   std::filesystem::path cache_dir() const { return cache_dir_; }
 
 private:

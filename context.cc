@@ -29,6 +29,7 @@ SerializeObjectMetaData(const std::vector<ObjectMetaData> &meta_datas) {
     nlohmann::json j2;
     j2["path"] = md.path;
     j2["size"] = md.size;
+    j2["unix_time_millis"] = md.unix_time_millis;
     j.push_back(j2);
   }
   return j.dump();
@@ -41,6 +42,7 @@ std::vector<ObjectMetaData> DeserializeObjectMetaData(const std::string &json) {
     ObjectMetaData md;
     md.path = std::filesystem::path(j2["path"]);
     md.size = j2["size"];
+    md.unix_time_millis = j2["unix_time_millis"];
     meta_datas.push_back(md);
   }
   return meta_datas;
@@ -124,6 +126,7 @@ std::vector<ObjectMetaData> ROS3FSContext::FetchObjectMetaDataFromS3() {
           result_files.push_back(ObjectMetaData{
               .path = "/" + object.GetKey(),
               .size = static_cast<uint64_t>(object.GetSize()),
+              .unix_time_millis = object.GetLastModified().Millis(),
           });
         }
 
@@ -152,6 +155,16 @@ void ROS3FSContext::UpdateRootDir(
   root_directory_->self.size = 0;
   root_directory_->self.type = FileType::kDirectory;
 
+  // TODO: When the bucket is created?
+  root_directory_->self.unix_time_millis = INT64_MAX;
+  for (const auto &md : meta_datas) {
+    root_directory_->self.unix_time_millis =
+        std::min(md.unix_time_millis, root_directory_->self.unix_time_millis);
+  }
+  if (root_directory_->self.unix_time_millis == INT64_MAX) {
+    root_directory_->self.unix_time_millis = 0;
+  }
+
   LOG(INFO) << LOG_KEY(meta_datas.size());
   for (const auto &md : meta_datas) {
     // TODO: Handle empty directory.
@@ -167,16 +180,24 @@ void ROS3FSContext::UpdateRootDir(
           current_dir->directories[dirs[i]] = std::make_shared<Directory>(
               Directory{.self = FileMetaData{.name = dirs[i],
                                              .size = 0,
-                                             .type = FileType::kDirectory}});
+                                             .type = FileType::kDirectory,
+                                             .unix_time_millis =
+                                                 md.unix_time_millis}});
+        } else {
+          current_dir->directories[dirs[i]]->self.unix_time_millis =
+              std::min(current_dir->directories[dirs[i]]->self.unix_time_millis,
+                       md.unix_time_millis);
         }
         current_dir = current_dir->directories[dirs[i]];
       } else {
         // File
         CHECK(!current_dir->directories.contains(dirs[i]));
-        current_dir->directories[dirs[i]] = std::make_shared<Directory>(
-            Directory{.self = FileMetaData{.name = dirs[i],
-                                           .size = md.size,
-                                           .type = FileType::kFile}});
+        current_dir->directories[dirs[i]] =
+            std::make_shared<Directory>(Directory{
+                .self = FileMetaData{.name = dirs[i],
+                                     .size = md.size,
+                                     .type = FileType::kFile,
+                                     .unix_time_millis = md.unix_time_millis}});
       }
     }
   }

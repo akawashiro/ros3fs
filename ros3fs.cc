@@ -124,24 +124,29 @@ int ROS3FSGetattr(const char *path_c_str, struct stat *stbuf,
   // S_IFDIR and S_IFREG.
 
   const std::filesystem::path path(path_c_str);
-  if (path == "/") {
-    stbuf->st_mode = S_IFDIR | 0444;
-    stbuf->st_nlink = 2;
-    LOG(INFO) << "ROS3FSGetattr: " << LOG_KEY(path) << " is the root.";
-    return 0;
-  }
 
-  LOG(INFO) << "ROS3FSGetattr: " << LOG_KEY(path) << " is not the root.";
   const auto meta = ROS3FSContext::GetContext().GetAttr(path);
   if (meta.has_value()) {
     if (meta.value().type == FileType::kDirectory) {
       stbuf->st_mode = S_IFDIR | 0444;
       stbuf->st_nlink = 2;
+
+      // TODO: This is platform dependent.
+      stbuf->st_atime = meta.value().unix_time_millis / 1000;
+      stbuf->st_mtime = meta.value().unix_time_millis / 1000;
+      stbuf->st_ctime = meta.value().unix_time_millis / 1000;
+
       LOG(INFO) << "ROS3FSGetattr: " << LOG_KEY(path) << " is a directory.";
     } else {
       stbuf->st_mode = S_IFREG | 0444;
       stbuf->st_nlink = 1;
       stbuf->st_size = meta.value().size;
+
+      // TODO: This is platform dependent.
+      stbuf->st_atime = meta.value().unix_time_millis / 1000;
+      stbuf->st_mtime = meta.value().unix_time_millis / 1000;
+      stbuf->st_ctime = meta.value().unix_time_millis / 1000;
+
       LOG(INFO) << "ROS3FSGetattr: " << LOG_KEY(path) << " is a normal file.";
     }
     return 0;

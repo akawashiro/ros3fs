@@ -3,7 +3,7 @@
 
 OZONE_OM_IP=$(docker inspect --format='{{.NetworkSettings.Networks.bridge.Gateway}}' ozone-instance)
 TMPDIR=$(mktemp -d)
-for i in $(seq 1 30000)
+for i in $(seq 1 10000)
 do
     echo ${RANDOM} > ${TMPDIR}/${i}
 
