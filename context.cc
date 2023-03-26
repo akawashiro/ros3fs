@@ -73,16 +73,7 @@ void ROS3FSContext::CopyFile(const std::string &src, const std::string &dst) {
   }
 }
 
-std::vector<ObjectMetaData> ROS3FSContext::FetchObjectMetaData() {
-  if (std::filesystem::exists(meta_data_path_)) {
-    LOG(INFO) << "Loading meta data from " << meta_data_path_;
-    std::ifstream ifs(meta_data_path_);
-    std::string json((std::istreambuf_iterator<char>(ifs)),
-                     (std::istreambuf_iterator<char>()));
-    return DeserializeObjectMetaData(json);
-  }
-
-  std::set<std::filesystem::path> file_and_dirs;
+std::vector<ObjectMetaData> ROS3FSContext::FetchObjectMetaDataFromS3() {
   std::vector<ObjectMetaData> result_files;
 
   {
@@ -130,40 +121,12 @@ std::vector<ObjectMetaData> ROS3FSContext::FetchObjectMetaData() {
     LOG(INFO) << "Done listing objects in bucket" << std::endl;
   }
 
-  LOG(INFO) << "Save metadata to " << meta_data_path_;
-  std::ofstream ofs(meta_data_path_);
-  ofs << SerializeObjectMetaData(result_files);
-
   return result_files;
 }
 
-ROS3FSContext::ROS3FSContext(const std::string &endpoint,
-                             const std::string &bucket_name,
-                             const std::filesystem::path &cache_dir)
-    : endpoint_(endpoint), bucket_name_(bucket_name),
-      cache_dir_(std::filesystem::canonical(cache_dir)),
-      lock_dir_(std::filesystem::canonical(cache_dir) / "lock"),
-      meta_data_path_(
-          std::filesystem::canonical(cache_dir) /
-          ("ros3fs_meta_data_" + GetSHA256(endpoint + bucket_name) + ".json")) {
-  CHECK_NE(endpoint, "");
-  CHECK_NE(bucket_name, "");
-  CHECK(std::filesystem::exists(cache_dir));
-  LOG(INFO) << "ROS3FSContext initialized with endpoint=" << endpoint
-            << " bucket_name=" << bucket_name
-            << " cache_dir=" << std::filesystem::canonical(cache_dir);
-
-  CHECK(std::filesystem::create_directory(lock_dir_))
-      << "Failed to create lock directory: " << lock_dir_
-      << ". If you don't run other process to mount this bucket, please remove "
-         "this directory and try again.";
-
-  LOG(INFO) << "Initialize AWS SDK API";
-  // The AWS SDK for C++ must be initialized by calling Aws::InitAPI.
-  Aws::InitAPI(sdk_options_);
-
-  std::vector<ObjectMetaData> meta_datas = FetchObjectMetaData();
-
+// Cautions: This function is not thread safe.
+void ROS3FSContext::UpdateRootDir(
+    const std::vector<ObjectMetaData> &meta_datas) {
   root_directory_ = std::make_shared<Directory>();
 
   root_directory_->self.name = "/";
@@ -198,8 +161,94 @@ ROS3FSContext::ROS3FSContext(const std::string &endpoint,
       }
     }
   }
+}
+
+void ROS3FSContext::InitMetaData() {
+  if (std::filesystem::exists(meta_data_path_)) {
+    LOG(INFO) << "Loading meta data from " << meta_data_path_;
+
+    {
+      // Critical section start
+      LOG(INFO) << "Try to lock meta_data_mutex_";
+      std::lock_guard<std::mutex> lock(meta_data_mutex_);
+
+      LOG(INFO) << "Load metadata from " << meta_data_path_;
+      std::ifstream ifs(meta_data_path_);
+      std::string json((std::istreambuf_iterator<char>(ifs)),
+                       (std::istreambuf_iterator<char>()));
+      const auto meta_datas = DeserializeObjectMetaData(json);
+      UpdateRootDir(meta_datas);
+      // Critical section end
+    }
+  } else {
+    const auto meta_datas = FetchObjectMetaDataFromS3();
+
+    {
+      // Critical section start
+      LOG(INFO) << "Try to lock meta_data_mutex_";
+      std::lock_guard<std::mutex> lock(meta_data_mutex_);
+
+      LOG(INFO) << "Save metadata to " << meta_data_path_;
+      std::ofstream ofs(meta_data_path_);
+      ofs << SerializeObjectMetaData(meta_datas);
+      UpdateRootDir(meta_datas);
+      // Critical section end
+    }
+  }
+}
+
+void ROS3FSContext::UpdateMetaDataLoop() {
+  while (true) {
+    std::this_thread::sleep_for(std::chrono::seconds(update_metadata_seconds_));
+    LOG(INFO) << "FetchObjectMetaDataFromS3 start";
+    const auto meta_datas = FetchObjectMetaDataFromS3();
+    {
+      // Critical section start
+      LOG(INFO) << "Try to lock meta_data_mutex_";
+      std::lock_guard<std::mutex> lock(meta_data_mutex_);
+
+      LOG(INFO) << "Save metadata to " << meta_data_path_;
+      std::ofstream ofs(meta_data_path_);
+      ofs << SerializeObjectMetaData(meta_datas);
+      UpdateRootDir(meta_datas);
+      // Critical section end
+    }
+    LOG(INFO) << "FetchObjectMetaDataFromS3 end";
+  }
+}
+
+ROS3FSContext::ROS3FSContext(const std::string &endpoint,
+                             const std::string &bucket_name,
+                             const std::filesystem::path &cache_dir)
+    : endpoint_(endpoint), bucket_name_(bucket_name),
+      cache_dir_(std::filesystem::canonical(cache_dir)),
+      lock_dir_(std::filesystem::canonical(cache_dir) / "lock"),
+      update_metadata_seconds_(10),
+      meta_data_path_(
+          std::filesystem::canonical(cache_dir) /
+          ("ros3fs_meta_data_" + GetSHA256(endpoint + bucket_name) + ".json")) {
+  CHECK_NE(endpoint, "");
+  CHECK_NE(bucket_name, "");
+  CHECK(std::filesystem::exists(cache_dir));
+  LOG(INFO) << "ROS3FSContext initialized with endpoint=" << endpoint
+            << " bucket_name=" << bucket_name
+            << " cache_dir=" << std::filesystem::canonical(cache_dir);
+
+  CHECK(std::filesystem::create_directory(lock_dir_))
+      << "Failed to create lock directory: " << lock_dir_
+      << ". If you don't run other process to mount this bucket, please remove "
+         "this directory and try again.";
+
+  LOG(INFO) << "Initialize AWS SDK API";
+  // The AWS SDK for C++ must be initialized by calling Aws::InitAPI.
+  Aws::InitAPI(sdk_options_);
+
+  InitMetaData();
 
   sdk_options_.loggingOptions.logLevel = Aws::Utils::Logging::LogLevel::Debug;
+
+  update_metadata_loop_thread_ =
+      std::thread(&ROS3FSContext::UpdateMetaDataLoop, this);
 }
 
 ROS3FSContext::~ROS3FSContext() {
@@ -219,25 +268,32 @@ ROS3FSContext::ReadDirectory(const std::filesystem::path &path) {
   CHECK_GE(dirs.size(), static_cast<size_t>(1));
   CHECK_EQ(dirs[0], "/");
 
-  std::shared_ptr<Directory> current_dir = root_directory_;
-  for (size_t i = 0; i < dirs.size(); i++) {
-    VLOG(3) << LOG_KEY(dirs.size()) << LOG_KEY(i) << LOG_KEY(dirs[i])
-            << LOG_KEY(current_dir->directories.size())
-            << LOG_KEY(current_dir->self.name);
-    if (dirs.size() == i + 1) {
-      std::vector<FileMetaData> result;
-      for (const auto &dir : current_dir->directories) {
-        result.emplace_back(dir.second->self);
-      }
-      return result;
-    }
+  {
+    // Critical section start
+    LOG(INFO) << "Try to lock meta_data_mutex_";
+    std::lock_guard<std::mutex> lock(meta_data_mutex_);
 
-    if (!current_dir->directories.contains(dirs[i + 1])) {
-      return {};
-    } else {
-      VLOG(3) << LOG_KEY(dirs[i + 1]);
-      current_dir = current_dir->directories.at(dirs[i + 1]);
+    std::shared_ptr<Directory> current_dir = root_directory_;
+    for (size_t i = 0; i < dirs.size(); i++) {
+      VLOG(3) << LOG_KEY(dirs.size()) << LOG_KEY(i) << LOG_KEY(dirs[i])
+              << LOG_KEY(current_dir->directories.size())
+              << LOG_KEY(current_dir->self.name);
+      if (dirs.size() == i + 1) {
+        std::vector<FileMetaData> result;
+        for (const auto &dir : current_dir->directories) {
+          result.emplace_back(dir.second->self);
+        }
+        return result;
+      }
+
+      if (!current_dir->directories.contains(dirs[i + 1])) {
+        return {};
+      } else {
+        VLOG(3) << LOG_KEY(dirs[i + 1]);
+        current_dir = current_dir->directories.at(dirs[i + 1]);
+      }
     }
+    // Critical section end
   }
 
   return {};
@@ -249,19 +305,26 @@ ROS3FSContext::GetAttr(const std::filesystem::path &path) {
   CHECK_GE(dirs.size(), static_cast<size_t>(1));
   CHECK_EQ(dirs[0], "/");
 
-  std::shared_ptr<Directory> current_dir = root_directory_;
-  for (size_t i = 0; i < dirs.size(); i++) {
-    VLOG(3) << LOG_KEY(dirs[i]);
-    if (dirs.size() == i + 1) {
-      return current_dir->self;
-    }
+  {
+    // Critical section start
+    LOG(INFO) << "Try to lock meta_data_mutex_";
+    std::lock_guard<std::mutex> lock(meta_data_mutex_);
 
-    VLOG(3) << LOG_KEY(dirs[i + 1]);
-    if (!current_dir->directories.contains(dirs[i + 1])) {
-      return std::nullopt;
-    } else {
-      current_dir = current_dir->directories.at(dirs[i + 1]);
+    std::shared_ptr<Directory> current_dir = root_directory_;
+    for (size_t i = 0; i < dirs.size(); i++) {
+      VLOG(3) << LOG_KEY(dirs[i]);
+      if (dirs.size() == i + 1) {
+        return current_dir->self;
+      }
+
+      VLOG(3) << LOG_KEY(dirs[i + 1]);
+      if (!current_dir->directories.contains(dirs[i + 1])) {
+        return std::nullopt;
+      } else {
+        current_dir = current_dir->directories.at(dirs[i + 1]);
+      }
     }
+    // Critical section end
   }
 
   return std::nullopt;

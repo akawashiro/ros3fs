@@ -2,6 +2,7 @@
 // Copyright (C) 2023 Akira Kawata
 
 #include <aws/core/Aws.h>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -53,9 +54,15 @@ private:
   const std::string bucket_name_;
   const std::filesystem::path cache_dir_;
   const std::filesystem::path lock_dir_;
-  const std::filesystem::path meta_data_path_;
+  const uint64_t update_metadata_seconds_;
+
+  // You must get meta_data_mutex_ before accessing root_directory_ and meta_data_path_.
+  std::mutex meta_data_mutex_;
   std::shared_ptr<Directory> root_directory_;
+  const std::filesystem::path meta_data_path_;
+
   Aws::SDKOptions sdk_options_;
+  std::thread update_metadata_loop_thread_;
 
   ROS3FSContext(const std::string &endpoint, const std::string &bucket_name,
                 const std::filesystem::path &cache_dir);
@@ -68,5 +75,8 @@ private:
     return context;
   }
 
-  std::vector<ObjectMetaData> FetchObjectMetaData();
+  void InitMetaData();
+  std::vector<ObjectMetaData> FetchObjectMetaDataFromS3();
+  void UpdateMetaDataLoop();
+  void UpdateRootDir(const std::vector<ObjectMetaData> &meta_datas);
 };
