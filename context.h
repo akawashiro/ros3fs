@@ -51,7 +51,7 @@ public:
   std::vector<FileMetaData> ReadDirectory(const std::filesystem::path &path);
   std::optional<FileMetaData> GetAttr(const std::filesystem::path &path);
 
-  void CopyFile(const std::string &src, const std::string &dst);
+  std::vector<uint8_t> GetFileContents(const std::filesystem::path& path);
   std::filesystem::path cache_dir() const { return cache_dir_; }
 
 private:
@@ -67,6 +67,9 @@ private:
   std::mutex meta_data_mutex_;
   std::shared_ptr<Directory> root_directory_;
   const std::filesystem::path meta_data_path_;
+
+  // You must get cache_file_mutex_ before accessing any cache file.
+  std::mutex cache_file_mutex_;
 
   Aws::SDKOptions sdk_options_;
 
@@ -93,6 +96,6 @@ private:
 
   void InitMetaData();
   std::vector<ObjectMetaData> FetchObjectMetaDataFromS3();
-  void UpdateMetaDataLoop();
+  void UpdateLoop();
   void UpdateRootDir(const std::vector<ObjectMetaData> &meta_datas);
 };

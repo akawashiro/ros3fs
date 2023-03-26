@@ -187,14 +187,6 @@ int ROS3FSOpen(const char *path, struct fuse_file_info *fi) {
   return 0;
 }
 
-std::vector<uint8_t> readFileData(const std::string &path) {
-
-  std::ifstream input(path, std::ios::binary);
-  std::vector<uint8_t> buffer(std::istreambuf_iterator<char>(input), {});
-
-  return buffer;
-}
-
 int ROS3FSRead(const char *path_c_str, char *buf, size_t size, off_t offset,
                struct fuse_file_info *fi) {
   const std::filesystem::path path(path_c_str);
@@ -204,18 +196,9 @@ int ROS3FSRead(const char *path_c_str, char *buf, size_t size, off_t offset,
 
   std::optional<FileMetaData> meta = ROS3FSContext::GetContext().GetAttr(path);
   if (meta.has_value() && meta.value().type == FileType::kFile) {
-    std::filesystem::path cache_file =
-        ROS3FSContext::GetContext().cache_dir() /
-        ("ros3fs_cache_file_" + GetSHA256(path.string()));
-
-    // TODO: Should we copy in Context?
-    if (!std::filesystem::exists(cache_file)) {
-      ROS3FSContext::GetContext().CopyFile(path.string().substr(1), cache_file);
-    }
-
-    const std::vector<uint8_t> d = readFileData(cache_file);
+    const std::vector<uint8_t> d = ROS3FSContext::GetContext().GetFileContents(path);
     const auto n =
-        std::min(size, std::filesystem::file_size(cache_file) - offset);
+        std::min(size, d.size() - offset);
 
     LOG(INFO) << "ROS3FSRead: " << LOG_KEY(path) << LOG_KEY(size)
               << LOG_KEY(offset) << LOG_KEY(n);

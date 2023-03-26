@@ -5,6 +5,7 @@
 #include "glog/logging.h"
 
 #include <cstddef>
+#include <filesystem>
 #include <memory>
 #include <nlohmann/json.hpp>
 
@@ -44,17 +45,22 @@ std::vector<ObjectMetaData> DeserializeObjectMetaData(const std::string &json) {
   }
   return meta_datas;
 }
+
 } // namespace
 
-void ROS3FSContext::CopyFile(const std::string &src, const std::string &dst) {
-  {
+std::vector<uint8_t>
+ROS3FSContext::GetFileContents(const std::filesystem::path &path) {
+  std::filesystem::path cache_file =
+      cache_dir() / ("ros3fs_cache_file_" + GetSHA256(path.string()));
+
+  if (!std::filesystem::exists(cache_file)) {
     Aws::Client::ClientConfiguration config;
     config.endpointOverride = endpoint_;
     Aws::S3::S3Client client(config);
 
     Aws::S3::Model::GetObjectRequest request;
     request.SetBucket(bucket_name_);
-    request.SetKey(src);
+    request.SetKey(path.string().substr(1));
 
     Aws::S3::Model::GetObjectOutcome outcome = client.GetObject(request);
 
@@ -63,13 +69,24 @@ void ROS3FSContext::CopyFile(const std::string &src, const std::string &dst) {
       LOG(FATAL) << "Error: GetObject: " << err.GetExceptionName() << ": "
                  << err.GetMessage() << std::endl;
     } else {
-      LOG(INFO) << "Successfully retrieved '" << src << "' from '"
+      LOG(INFO) << "Successfully retrieved '" << path.string().substr(1)
+                << "' from '"
                 << "bucket1/"
                 << "'." << std::endl;
 
-      std::ofstream ofs(dst);
-      ofs << outcome.GetResult().GetBody().rdbuf();
+      {
+        std::lock_guard<std::mutex> lock(cache_file_mutex_);
+        std::ofstream ofs(cache_file);
+        ofs << outcome.GetResult().GetBody().rdbuf();
+      }
     }
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(cache_file_mutex_);
+    std::ifstream input(cache_file, std::ios::binary);
+    const std::vector<uint8_t> d(std::istreambuf_iterator<char>(input), {});
+    return d;
   }
 }
 
@@ -199,7 +216,7 @@ void ROS3FSContext::InitMetaData() {
   }
 }
 
-void ROS3FSContext::UpdateMetaDataLoop() {
+void ROS3FSContext::UpdateLoop() {
   while (true) {
     {
       std::unique_lock<std::mutex> lock(update_metadata_loop_mtx_);
@@ -224,6 +241,17 @@ void ROS3FSContext::UpdateMetaDataLoop() {
       ofs << SerializeObjectMetaData(meta_datas);
       UpdateRootDir(meta_datas);
       // Critical section end
+    }
+    {
+      std::lock_guard<std::mutex> lock(cache_file_mutex_);
+      LOG(INFO) << "Clear cache files in " << cache_dir_;
+      for (const auto &entry :
+           std::filesystem::directory_iterator(cache_dir_)) {
+        if (std::filesystem::canonical(entry.path()) != lock_dir_ &&
+            std::filesystem::canonical(entry.path()) != meta_data_path_) {
+          std::filesystem::remove_all(entry.path());
+        }
+      }
     }
   }
 }
@@ -281,8 +309,7 @@ ROS3FSContext::ROS3FSContext(const std::string &endpoint,
 
   sdk_options_.loggingOptions.logLevel = Aws::Utils::Logging::LogLevel::Debug;
 
-  update_metadata_loop_thread_ =
-      std::thread(&ROS3FSContext::UpdateMetaDataLoop, this);
+  update_metadata_loop_thread_ = std::thread(&ROS3FSContext::UpdateLoop, this);
 }
 
 ROS3FSContext::~ROS3FSContext() {
