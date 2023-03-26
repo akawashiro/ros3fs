@@ -36,11 +36,12 @@ class ROS3FSContext {
 public:
   ROS3FSContext(ROS3FSContext const &) = delete;
   void operator=(ROS3FSContext const &) = delete;
-  static ROS3FSContext &GetContext() { return GetContextImpl("", "", ""); }
+  static ROS3FSContext &GetContext() { return GetContextImpl("", "", 0, ""); }
   static void InitContext(const std::string &endpoint,
                           const std::string &bucket_name,
+                          const int update_metadata_seconds,
                           const std::filesystem::path &cache_dir) {
-    GetContextImpl(endpoint, bucket_name, cache_dir);
+    GetContextImpl(endpoint, bucket_name, update_metadata_seconds, cache_dir);
   }
 
   std::vector<FileMetaData> ReadDirectory(const std::filesystem::path &path);
@@ -56,7 +57,8 @@ private:
   const std::filesystem::path lock_dir_;
   const uint64_t update_metadata_seconds_;
 
-  // You must get meta_data_mutex_ before accessing root_directory_ and meta_data_path_.
+  // You must get meta_data_mutex_ before accessing root_directory_ and
+  // meta_data_path_.
   std::mutex meta_data_mutex_;
   std::shared_ptr<Directory> root_directory_;
   const std::filesystem::path meta_data_path_;
@@ -65,13 +67,16 @@ private:
   std::thread update_metadata_loop_thread_;
 
   ROS3FSContext(const std::string &endpoint, const std::string &bucket_name,
+                const int update_metadata_seconds,
                 const std::filesystem::path &cache_dir);
   ~ROS3FSContext();
 
   static ROS3FSContext &GetContextImpl(const std::string &endpoint,
                                        const std::string &bucket_name,
+                                       const int update_metadata_seconds,
                                        const std::filesystem::path &cache_dir) {
-    static ROS3FSContext context(endpoint, bucket_name, cache_dir);
+    static ROS3FSContext context(endpoint, bucket_name, update_metadata_seconds,
+                                 cache_dir);
     return context;
   }
 

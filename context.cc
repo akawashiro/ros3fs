@@ -219,11 +219,12 @@ void ROS3FSContext::UpdateMetaDataLoop() {
 
 ROS3FSContext::ROS3FSContext(const std::string &endpoint,
                              const std::string &bucket_name,
+                             const int update_metadata_seconds,
                              const std::filesystem::path &cache_dir)
     : endpoint_(endpoint), bucket_name_(bucket_name),
       cache_dir_(std::filesystem::canonical(cache_dir)),
       lock_dir_(std::filesystem::canonical(cache_dir) / "lock"),
-      update_metadata_seconds_(10),
+      update_metadata_seconds_(update_metadata_seconds),
       meta_data_path_(
           std::filesystem::canonical(cache_dir) /
           ("ros3fs_meta_data_" + GetSHA256(endpoint + bucket_name) + ".json")) {
@@ -243,6 +244,17 @@ ROS3FSContext::ROS3FSContext(const std::string &endpoint,
   // The AWS SDK for C++ must be initialized by calling Aws::InitAPI.
   Aws::InitAPI(sdk_options_);
 
+  {
+    // S3 sanity check
+    Aws::Client::ClientConfiguration config;
+    config.endpointOverride = endpoint_;
+    Aws::S3::S3Client client(config);
+
+    auto outcome = client.ListBuckets();
+    CHECK(outcome.IsSuccess())
+        << "Failed to list buckets: " << outcome.GetError().GetMessage();
+  }
+
   InitMetaData();
 
   sdk_options_.loggingOptions.logLevel = Aws::Utils::Logging::LogLevel::Debug;
@@ -252,6 +264,9 @@ ROS3FSContext::ROS3FSContext(const std::string &endpoint,
 }
 
 ROS3FSContext::~ROS3FSContext() {
+  LOG(INFO) << "Stop update_metadata_loop_thread_";
+  update_metadata_loop_thread_.join();
+
   LOG(INFO) << "Shutdown AWS SDK API";
   // Before the application terminates, the SDK must be shut down.
   ShutdownAPI(sdk_options_);
