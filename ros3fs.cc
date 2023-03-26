@@ -43,7 +43,7 @@ struct ROS3FSOptions {
   const char *bucket_name;
   const char *cache_dir;
   int clear_cache;
-  int update_metadata_period_seconds;
+  int update_seconds;
 } ROS3FSOptions;
 
 #define OPTION(t, p)                                                           \
@@ -55,7 +55,7 @@ const struct fuse_opt option_spec[] = {
     OPTION("--bucket_name=%s", bucket_name),
     OPTION("--cache_dir=%s", cache_dir),
     OPTION("--clear_cache", clear_cache),
-    OPTION("--update_metadata_seconds=%d", update_metadata_period_seconds),
+    OPTION("--update_seconds=%d", update_seconds),
     FUSE_OPT_END};
 
 void show_help(const char *progname) {
@@ -74,7 +74,7 @@ void show_help(const char *progname) {
       << "--bucket_name=NAME     S3 bucket name (required)" << std::endl
       << "--cache_dir=PATH       Cache directory (required)" << std::endl
       << "--clear_cache          Clear cache files (optional)" << std::endl
-      << "--update_metadata_seconds=SECONDS" << std::endl
+      << "--update_seconds=SECONDS" << std::endl
       << "                       Update metadata period seconds (optional)"
       << std::endl
       << "                       Default value is 3600" << std::endl
@@ -196,9 +196,9 @@ int ROS3FSRead(const char *path_c_str, char *buf, size_t size, off_t offset,
 
   std::optional<FileMetaData> meta = ROS3FSContext::GetContext().GetAttr(path);
   if (meta.has_value() && meta.value().type == FileType::kFile) {
-    const std::vector<uint8_t> d = ROS3FSContext::GetContext().GetFileContents(path);
-    const auto n =
-        std::min(size, d.size() - offset);
+    const std::vector<uint8_t> d =
+        ROS3FSContext::GetContext().GetFileContents(path);
+    const auto n = std::min(size, d.size() - offset);
 
     LOG(INFO) << "ROS3FSRead: " << LOG_KEY(path) << LOG_KEY(size)
               << LOG_KEY(offset) << LOG_KEY(n);
@@ -281,13 +281,13 @@ int main(int argc, char *argv[]) {
 
   const bool clear_cache = ROS3FSOptions.clear_cache;
 
-  const int update_metadata_seconds =
-      ROS3FSOptions.update_metadata_period_seconds > 0
-          ? ROS3FSOptions.update_metadata_period_seconds
-          : 3600;
+  constexpr int defaultUpdateSeconds = 3600;
+  const int update_seconds = ROS3FSOptions.update_seconds > 0
+                                 ? ROS3FSOptions.update_seconds
+                                 : defaultUpdateSeconds;
 
   ROS3FSContext::InitContext(ROS3FSOptions.endpoint, ROS3FSOptions.bucket_name,
-                             update_metadata_seconds, cache_dir, clear_cache);
+                             update_seconds, cache_dir, clear_cache);
 
   ret = fuse_main(args.argc, args.argv, &ozonefs_oper, NULL);
   fuse_opt_free_args(&args);

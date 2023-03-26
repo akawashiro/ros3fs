@@ -220,8 +220,8 @@ void ROS3FSContext::UpdateLoop() {
   while (true) {
     {
       std::unique_lock<std::mutex> lock(update_metadata_loop_mtx_);
-      update_metadata_loop_cv_.wait_for(
-          lock, std::chrono::seconds(update_metadata_seconds_));
+      update_metadata_loop_cv_.wait_for(lock,
+                                        std::chrono::seconds(update_seconds_));
       if (update_metadata_loop_stop_) {
         // TODO: Do we need this break? std::thread::join() automatically
         // breaks, doesn't it?
@@ -258,14 +258,14 @@ void ROS3FSContext::UpdateLoop() {
 
 ROS3FSContext::ROS3FSContext(const std::string &endpoint,
                              const std::string &bucket_name,
-                             const int update_metadata_seconds,
+                             const int update_seconds,
                              const std::filesystem::path &cache_dir,
                              const bool clear_cache)
     : endpoint_(endpoint), bucket_name_(bucket_name),
       cache_dir_(std::filesystem::canonical(cache_dir)),
       clear_cache_(clear_cache),
       lock_dir_(std::filesystem::canonical(cache_dir) / "lock"),
-      update_metadata_seconds_(update_metadata_seconds),
+      update_seconds_(update_seconds),
       meta_data_path_(
           std::filesystem::canonical(cache_dir) /
           ("ros3fs_meta_data_" + GetSHA256(endpoint + bucket_name) + ".json")) {

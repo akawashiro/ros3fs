@@ -41,10 +41,10 @@ public:
   }
   static void InitContext(const std::string &endpoint,
                           const std::string &bucket_name,
-                          const int update_metadata_seconds,
+                          const int update_seconds,
                           const std::filesystem::path &cache_dir,
                           const bool clear_cache) {
-    GetContextImpl(endpoint, bucket_name, update_metadata_seconds, cache_dir,
+    GetContextImpl(endpoint, bucket_name, update_seconds, cache_dir,
                    clear_cache);
   }
 
@@ -60,7 +60,7 @@ private:
   const std::filesystem::path cache_dir_;
   const bool clear_cache_;
   const std::filesystem::path lock_dir_;
-  const uint64_t update_metadata_seconds_;
+  const uint64_t update_seconds_;
 
   // You must get meta_data_mutex_ before accessing root_directory_ and
   // meta_data_path_.
