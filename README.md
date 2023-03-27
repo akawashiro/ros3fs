@@ -9,7 +9,10 @@ words, ros3fs is suitable for accessing immutable data such as backup data,
 machine learning training data, or log data.
 
 ## How to build and install
+Note: Use [CMAKE_INSTALL_PREFIX](https://cmake.org/cmake/help/v3.0/variable/CMAKE_INSTALL_PREFIX.html) to change the install destination.
 ```
+# Install equivalent packages on Linux distributions other than Ubuntu.
+sudo apt-get install -y cmake g++ git libfuse3-dev ninja-build zlib1g-dev libcurl4-openssl-dev libssl-dev ccache
 git clone https://github.com/akawashiro/ros3fs.git
 cd ros3fs
 ./build-aws-sdk-cpp.sh
