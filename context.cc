@@ -66,21 +66,20 @@ ROS3FSContext::GetFileContents(const std::filesystem::path &path) {
 
     Aws::S3::Model::GetObjectOutcome outcome = client.GetObject(request);
 
-    if (!outcome.IsSuccess()) {
-      const Aws::S3::S3Error &err = outcome.GetError();
-      LOG(FATAL) << "Error: GetObject: " << err.GetExceptionName() << ": "
-                 << err.GetMessage() << std::endl;
-    } else {
+    if (outcome.IsSuccess()) {
       LOG(INFO) << "Successfully retrieved '" << path.string().substr(1)
                 << "' from '"
                 << "bucket1/"
                 << "'." << std::endl;
-
       {
         std::lock_guard<std::mutex> lock(cache_file_mutex_);
         std::ofstream ofs(cache_file);
         ofs << outcome.GetResult().GetBody().rdbuf();
       }
+    } else {
+      const Aws::S3::S3Error &err = outcome.GetError();
+      LOG(FATAL) << "Error: GetObject: " << err.GetExceptionName() << ": "
+                 << err.GetMessage() << std::endl;
     }
   }
 
@@ -116,8 +115,7 @@ std::vector<ObjectMetaData> ROS3FSContext::FetchObjectMetaDataFromS3() {
       objectsOutcome = s3Client.ListObjects(objectsRequest);
       if (objectsOutcome.IsSuccess()) {
         LOG(INFO) << "Objects in bucket: "
-                  << objectsOutcome.GetResult().GetContents().size()
-                  << std::endl;
+                  << objectsOutcome.GetResult().GetContents().size();
 
         Aws::Vector<Aws::S3::Model::Object> objects =
             objectsOutcome.GetResult().GetContents();
@@ -134,8 +132,8 @@ std::vector<ObjectMetaData> ROS3FSContext::FetchObjectMetaDataFromS3() {
         nextMarker = objectsOutcome.GetResult().GetNextMarker();
         LOG(INFO) << "Next marker: " << nextMarker << std::endl;
       } else {
-        LOG(WARNING) << "Error listing objects in bucket: "
-                     << objectsOutcome.GetError().GetMessage() << std::endl;
+        LOG(FATAL) << "Error listing objects in bucket: "
+                   << objectsOutcome.GetError().GetMessage() << std::endl;
         isTruncated = false;
       }
     } while (isTruncated);

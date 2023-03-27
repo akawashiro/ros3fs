@@ -75,7 +75,7 @@ void show_help(const char *progname) {
       << "--cache_dir=PATH       Cache directory (required)" << std::endl
       << "--clear_cache          Clear cache files (optional)" << std::endl
       << "--update_seconds=SECONDS" << std::endl
-      << "                       Update metadata period seconds (optional)"
+      << "                       Update period seconds (optional)"
       << std::endl
       << "                       Default value is 3600" << std::endl
       << std::endl
