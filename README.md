@@ -8,6 +8,14 @@ you update your data in your bucket after ros3fs mounts the bucket. In other
 words, ros3fs is suitable for accessing immutable data such as backup data,
 machine learning training data, or log data.
 
+# Required environment
+- Linux
+    - I confirmed on Ubuntu 22.04 but ros3fs must work on other distributions.
+- Windows
+    - I confirmed on WSL2.
+- Mac OS
+    - I haven't confirmed but ros3fs should work on Docker for Mac.
+
 ## How to build and install
 Note: Use [CMAKE_INSTALL_PREFIX](https://cmake.org/cmake/help/v3.0/variable/CMAKE_INSTALL_PREFIX.html) to change the install destination.
 ```
