@@ -102,7 +102,7 @@ std::vector<ObjectMetaData> ROS3FSContext::FetchObjectMetaDataFromS3() {
     Aws::S3::Model::ListObjectsRequest objectsRequest;
     objectsRequest.SetBucket(bucket_name_);
     // TODO: Adjust the value of max keys watching performance.
-    objectsRequest.SetMaxKeys(1000);
+    objectsRequest.SetMaxKeys(list_max_keys_);
 
     Aws::S3::Model::ListObjectsOutcome objectsOutcome;
     bool isTruncated = false;
@@ -277,14 +277,14 @@ void ROS3FSContext::UpdateLoop() {
 
 ROS3FSContext::ROS3FSContext(const std::string &endpoint,
                              const std::string &bucket_name,
-                             const int update_seconds,
+                             const int update_seconds, const int list_max_keys,
                              const std::filesystem::path &cache_dir,
                              const bool clear_cache)
     : endpoint_(endpoint), bucket_name_(bucket_name),
       cache_dir_(std::filesystem::canonical(cache_dir)),
       clear_cache_(clear_cache),
       lock_dir_(std::filesystem::canonical(cache_dir) / "lock"),
-      update_seconds_(update_seconds),
+      update_seconds_(update_seconds), list_max_keys_(list_max_keys),
       meta_data_path_(
           std::filesystem::canonical(cache_dir) /
           ("ros3fs_meta_data_" + GetSHA256(endpoint + bucket_name) + ".json")) {

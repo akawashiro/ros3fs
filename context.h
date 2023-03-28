@@ -39,15 +39,15 @@ public:
   ROS3FSContext(ROS3FSContext const &) = delete;
   void operator=(ROS3FSContext const &) = delete;
   static ROS3FSContext &GetContext() {
-    return GetContextImpl("", "", 0, "", false);
+    return GetContextImpl("", "", 0, 0, "", false);
   }
   static void InitContext(const std::string &endpoint,
                           const std::string &bucket_name,
-                          const int update_seconds,
+                          const int update_seconds, const int list_max_keys,
                           const std::filesystem::path &cache_dir,
                           const bool clear_cache) {
-    GetContextImpl(endpoint, bucket_name, update_seconds, cache_dir,
-                   clear_cache);
+    GetContextImpl(endpoint, bucket_name, update_seconds, list_max_keys,
+                   cache_dir, clear_cache);
   }
 
   std::vector<FileMetaData> ReadDirectory(const std::filesystem::path &path);
@@ -63,6 +63,7 @@ private:
   const bool clear_cache_;
   const std::filesystem::path lock_dir_;
   const uint64_t update_seconds_;
+  const int list_max_keys_;
 
   // You must get meta_data_mutex_ before accessing root_directory_ and
   // meta_data_path_.
@@ -82,17 +83,18 @@ private:
   std::thread update_metadata_loop_thread_;
 
   ROS3FSContext(const std::string &endpoint, const std::string &bucket_name,
-                const int update_metadata_seconds,
+                const int update_metadata_seconds, const int list_max_keys,
                 const std::filesystem::path &cache_dir, const bool clear_cache);
   ~ROS3FSContext();
 
   static ROS3FSContext &GetContextImpl(const std::string &endpoint,
                                        const std::string &bucket_name,
                                        const int update_metadata_seconds,
+                                       const int list_max_keys,
                                        const std::filesystem::path &cache_dir,
                                        const bool clear_cache) {
     static ROS3FSContext context(endpoint, bucket_name, update_metadata_seconds,
-                                 cache_dir, clear_cache);
+                                 list_max_keys, cache_dir, clear_cache);
     return context;
   }
 

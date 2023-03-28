@@ -44,6 +44,7 @@ struct ROS3FSOptions {
   const char *cache_dir;
   int clear_cache;
   int update_seconds;
+  int list_max_keys;
 } ROS3FSOptions;
 
 #define OPTION(t, p)                                                           \
@@ -56,6 +57,7 @@ const struct fuse_opt option_spec[] = {
     OPTION("--cache_dir=%s", cache_dir),
     OPTION("--clear_cache", clear_cache),
     OPTION("--update_seconds=%d", update_seconds),
+    OPTION("--list-max-keys=%d", list_max_keys),
     FUSE_OPT_END};
 
 void show_help(const char *progname) {
@@ -75,9 +77,13 @@ void show_help(const char *progname) {
       << "--cache_dir=PATH       Cache directory (required)" << std::endl
       << "--clear_cache          Clear cache files (optional)" << std::endl
       << "--update_seconds=SECONDS" << std::endl
-      << "                       Update period seconds (optional)"
-      << std::endl
+      << "                       Update period seconds (optional)" << std::endl
       << "                       Default value is 3600" << std::endl
+      << "--list_max_keys=KEYS" << std::endl
+      << "                       The number of keys fetched in one request "
+         "(optional)"
+      << "                       Default value is 1000" << std::endl
+      << std::endl
       << std::endl
       << std::endl
       << "FUSE specific options:" << std::endl
@@ -291,8 +297,14 @@ int main(int argc, char *argv[]) {
                                  ? ROS3FSOptions.update_seconds
                                  : defaultUpdateSeconds;
 
+  constexpr int defaultListMaxKeys = 1000;
+  const int list_max_keys = ROS3FSOptions.list_max_keys > 0
+                                ? ROS3FSOptions.list_max_keys
+                                : defaultListMaxKeys;
+
   ROS3FSContext::InitContext(ROS3FSOptions.endpoint, ROS3FSOptions.bucket_name,
-                             update_seconds, cache_dir, clear_cache);
+                             update_seconds, list_max_keys, cache_dir,
+                             clear_cache);
 
   ret = fuse_main(args.argc, args.argv, &ozonefs_oper, NULL);
   fuse_opt_free_args(&args);
