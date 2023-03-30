@@ -8,7 +8,7 @@ you update your data in your bucket after ros3fs mounts the bucket. In other
 words, ros3fs is suitable for accessing immutable data such as backup data,
 machine learning training data, or log data.
 
-# Required environment
+## Required environment
 - Linux
     - I confirmed on Ubuntu 22.04 but ros3fs must work on other distributions.
 - Windows
