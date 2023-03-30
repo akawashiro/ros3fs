@@ -108,6 +108,8 @@ std::vector<ObjectMetaData> ROS3FSContext::FetchObjectMetaDataFromS3() {
     bool isTruncated = false;
     std::string nextMarker;
 
+    std::chrono::system_clock::time_point startFetchTime =
+        std::chrono::system_clock::now();
     do {
       if (nextMarker != "") {
         objectsRequest.SetMarker(nextMarker);
@@ -137,8 +139,13 @@ std::vector<ObjectMetaData> ROS3FSContext::FetchObjectMetaDataFromS3() {
         isTruncated = false;
       }
     } while (isTruncated);
+    std::chrono::system_clock::time_point endFetchTime =
+        std::chrono::system_clock::now();
 
-    LOG(INFO) << "Done listing objects in bucket" << std::endl;
+    const auto d =
+        duration_cast<std::chrono::seconds>(endFetchTime - startFetchTime);
+    LOG(INFO) << "Done listing objects in bucket in " << d.count() << "seconds"
+              << std::endl;
   }
 
   return result_files;
