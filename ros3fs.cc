@@ -76,15 +76,12 @@ void show_help(const char *progname) {
       << "--bucket_name=NAME     S3 bucket name (required)" << std::endl
       << "--cache_dir=PATH       Cache directory (required)" << std::endl
       << "--clear_cache          Clear cache files (optional)" << std::endl
-      << "--update_seconds=SECONDS" << std::endl
-      << "                       Update period seconds (optional)" << std::endl
+      << "--update_seconds=SECS  Update period seconds (optional)" << std::endl
       << "                       Default value is 3600" << std::endl
-      << "--list_max_keys=KEYS" << std::endl
-      << "                       The number of keys fetched in one request "
+      << "--list_max_keys=KEYS   The number of keys fetched in one request "
          "(optional)"
+      << std::endl
       << "                       Default value is 1000" << std::endl
-      << std::endl
-      << std::endl
       << std::endl
       << "FUSE specific options:" << std::endl
       << "-d, -odebug" << std::endl
