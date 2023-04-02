@@ -20,7 +20,7 @@ twice a month.
 Under such a situation, we can cache everything locally, especially the
 directory structure. Caching this information lets us speed up searching and
 listing files in our storage. Of course, we must invalidate cache data
-manually, but it is fine if you update your data frequently.
+manually, but it is fine if you update your data infrequently.
 
 ## Important notice
 ros3fs caches everything locally. This means the changes are not reflected if
