@@ -44,7 +44,8 @@ Note: Use [CMAKE_INSTALL_PREFIX](https://cmake.org/cmake/help/v3.0/variable/CMAK
 sudo apt-get install -y cmake g++ git libfuse3-dev ninja-build zlib1g-dev libcurl4-openssl-dev libssl-dev ccache pkg-config
 git clone https://github.com/akawashiro/ros3fs.git
 cd ros3fs
-./build-aws-sdk-cpp.sh
+mkdir build
+./build-aws-sdk-cpp.sh ./build
 cmake -S . -B build
 cmake --build build -- -j
 cmake --build build -- install

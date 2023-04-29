@@ -7,22 +7,22 @@ endif()
 
 # Run ./build-and-install-aws-sdk-cpp.sh before running cmake.
 list(APPEND CMAKE_PREFIX_PATH
-    ${CMAKE_SOURCE_DIR}/aws-sdk-cpp-install/lib/cmake/AWSSDK
-    ${CMAKE_SOURCE_DIR}/aws-sdk-cpp-install/lib/cmake/aws-cpp-sdk-core
-    ${CMAKE_SOURCE_DIR}/aws-sdk-cpp-install/lib/aws-crt-cpp/cmake
-    ${CMAKE_SOURCE_DIR}/aws-sdk-cpp-install/lib/aws-c-http/cmake
-    ${CMAKE_SOURCE_DIR}/aws-sdk-cpp-install/lib/aws-c-mqtt/cmake
-    ${CMAKE_SOURCE_DIR}/aws-sdk-cpp-install/lib/aws-c-io/cmake
-    ${CMAKE_SOURCE_DIR}/aws-sdk-cpp-install/lib/aws-c-s3/cmake
-    ${CMAKE_SOURCE_DIR}/aws-sdk-cpp-install/lib/aws-c-sdkutils/cmake
-    ${CMAKE_SOURCE_DIR}/aws-sdk-cpp-install/lib/s2n/cmake
-    ${CMAKE_SOURCE_DIR}/aws-sdk-cpp-install/lib/aws-c-common/cmake
-    ${CMAKE_SOURCE_DIR}/aws-sdk-cpp-install/lib/aws-c-cal/cmake
-    ${CMAKE_SOURCE_DIR}/aws-sdk-cpp-install/lib/aws-c-compression/cmake
-    ${CMAKE_SOURCE_DIR}/aws-sdk-cpp-install/lib/aws-c-auth/cmake
-    ${CMAKE_SOURCE_DIR}/aws-sdk-cpp-install/lib/aws-checksums/cmake
-    ${CMAKE_SOURCE_DIR}/aws-sdk-cpp-install/lib/aws-c-event-stream/cmake
-    ${CMAKE_SOURCE_DIR}/aws-sdk-cpp-install/lib/cmake)
+    ${CMAKE_BINARY_DIR}/aws-sdk-cpp-install/lib/cmake/AWSSDK
+    ${CMAKE_BINARY_DIR}/aws-sdk-cpp-install/lib/cmake/aws-cpp-sdk-core
+    ${CMAKE_BINARY_DIR}/aws-sdk-cpp-install/lib/aws-crt-cpp/cmake
+    ${CMAKE_BINARY_DIR}/aws-sdk-cpp-install/lib/aws-c-http/cmake
+    ${CMAKE_BINARY_DIR}/aws-sdk-cpp-install/lib/aws-c-mqtt/cmake
+    ${CMAKE_BINARY_DIR}/aws-sdk-cpp-install/lib/aws-c-io/cmake
+    ${CMAKE_BINARY_DIR}/aws-sdk-cpp-install/lib/aws-c-s3/cmake
+    ${CMAKE_BINARY_DIR}/aws-sdk-cpp-install/lib/aws-c-sdkutils/cmake
+    ${CMAKE_BINARY_DIR}/aws-sdk-cpp-install/lib/s2n/cmake
+    ${CMAKE_BINARY_DIR}/aws-sdk-cpp-install/lib/aws-c-common/cmake
+    ${CMAKE_BINARY_DIR}/aws-sdk-cpp-install/lib/aws-c-cal/cmake
+    ${CMAKE_BINARY_DIR}/aws-sdk-cpp-install/lib/aws-c-compression/cmake
+    ${CMAKE_BINARY_DIR}/aws-sdk-cpp-install/lib/aws-c-auth/cmake
+    ${CMAKE_BINARY_DIR}/aws-sdk-cpp-install/lib/aws-checksums/cmake
+    ${CMAKE_BINARY_DIR}/aws-sdk-cpp-install/lib/aws-c-event-stream/cmake
+    ${CMAKE_BINARY_DIR}/aws-sdk-cpp-install/lib/cmake)
 
 set(CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake)
 find_package(PkgConfig)
