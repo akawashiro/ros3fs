@@ -41,26 +41,26 @@ machine learning training data, or log data.
 Note: Use [CMAKE_INSTALL_PREFIX](https://cmake.org/cmake/help/v3.0/variable/CMAKE_INSTALL_PREFIX.html) to change the install destination.
 ```
 # Install equivalent packages on Linux distributions other than Ubuntu.
-sudo apt-get install -y cmake g++ git libfuse3-dev ninja-build zlib1g-dev libcurl4-openssl-dev libssl-dev ccache pkg-config
-git clone https://github.com/akawashiro/ros3fs.git
-cd ros3fs
-mkdir build
-./build-aws-sdk-cpp.sh ./build
-cmake -S . -B build
-cmake --build build -- -j
-cmake --build build -- install
+$ sudo apt-get install -y cmake g++ git libfuse3-dev ninja-build zlib1g-dev libcurl4-openssl-dev libssl-dev ccache pkg-config
+$ git clone https://github.com/akawashiro/ros3fs.git
+$ cd ros3fs
+$ mkdir build
+$ ./build-aws-sdk-cpp.sh ./build
+$ cmake -S . -B build
+$ cmake --build build -- -j
+$ cmake --build build -- install
 ```
 
 ### Mount your bucket
 ```
 # Note: You need '=' in the command
 # For example, ros3fs ./build/ros3fs_mountpoint -f -d -s --endpoint=http://localhost:9878 --bucket_name=bucket1/ --cache_dir=./build/ros3fs_cache_dir
-ros3fs <MOUNTPOINT> -f -d --endpoint=<ENDPOINT URL> --bucket_name=<BUCKET NAME ENDS WITH '/'> --cache_dir=<CACHE DIRECTORY>
+$ ros3fs <MOUNTPOINT> -f -d --endpoint=<ENDPOINT URL> --bucket_name=<BUCKET NAME ENDS WITH '/'> --cache_dir=<CACHE DIRECTORY>
 ```
 
 ### Other options
 ```
-ros3fs --help
+$ ros3fs --help
 usage: ./build/ros3fs [options] <mountpoint>
 Example: ./build/ros3fs example_mountpoint_dir -f -d --endpoint=http://localhost:9878 \
          --bucket_name=example_bucket/ --cache_dir=example_cache_dir
@@ -90,4 +90,28 @@ FUSE specific options:
     If this is specified then mt will be set to 0 on success. 
     This flag indicates that the file system should be run 
     in multi-threaded mode. -s is currently ignored and mt will always be 0.
+```
+
+### Develop using local Ozone cluster using Docker
+First, install [AWS CLI](https://docs.aws.amazon.com/ja_jp/cli/latest/userguide/getting-started-install.html).
+
+In a terminal,
+```
+$ ./launch-ozone.sh
+```
+
+In another terminal,
+```
+$ aws configure set default.s3.signature_version s3v4
+$ aws configure set region us-west-1
+$ aws configure set aws_access_key_id "hoge"
+$ aws configure set aws_secret_access_key "fuga"
+$ ./create-files.sh
+$ ./mount-ros3fs.sh
+```
+
+In the third terminal,
+```
+$ ls build/ros3fs_mountpoint
+dir_a/  testfile_a  testfile_b  testfile_c
 ```

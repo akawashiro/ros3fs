@@ -1,7 +1,7 @@
 #! /bin/bash -eux
 # Check http://${OZONE_OM_IP}:9876/#!/ when you encounter errors.
 
-OZONE_OM_IP=$(docker inspect --format='{{.NetworkSettings.Networks.bridge.Gateway}}' ozone-instance)
+OZONE_OM_IP=$(sudo docker inspect --format='{{.NetworkSettings.Networks.bridge.Gateway}}' ozone-instance)
 ROS3FS_MOUNTPOINT_ANSWER=$(git rev-parse --show-toplevel)/build/ros3fs_mountpoint_answer
 mkdir -p ${ROS3FS_MOUNTPOINT_ANSWER}
 
