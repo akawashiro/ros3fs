@@ -114,9 +114,7 @@ void PutDataToWebdavWithCurl(const std::string &url,
     /* Now run off and do what you have been told! */
     res = curl_easy_perform(curl);
     /* Check for errors */
-    if (res != CURLE_OK)
-      fprintf(stderr, "curl_easy_perform() failed: %s\n",
-              curl_easy_strerror(res));
+    CHECK_EQ(res, CURLE_OK);
 
     /* always cleanup */
     curl_easy_cleanup(curl);
@@ -196,8 +194,10 @@ ROS3FSContext::GetFileContents(const std::filesystem::path &path) {
                   << "'." << std::endl;
         {
           std::lock_guard<std::mutex> lock(cache_file_mutex_);
-          std::ofstream ofs(cache_file);
-          ofs << outcome.GetResult().GetBody().rdbuf();
+          {
+            std::ofstream ofs(cache_file);
+            ofs << outcome.GetResult().GetBody().rdbuf();
+          }
 
           if (remote_url.has_value()) {
             PutDataToWebdavWithCurl(
