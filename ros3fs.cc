@@ -85,7 +85,7 @@ void show_help(const char *progname) {
          "(optional)"
       << std::endl
       << "                       Default value is 1000" << std::endl
-      << "--remote_url=URL       Webdav URL (optional)" << std::endl
+      << "--remote_url=URL       HTTP storage URL (optional)" << std::endl
       << std::endl
       << "FUSE specific options:" << std::endl
       << "-d, -odebug" << std::endl

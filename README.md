@@ -74,21 +74,22 @@ ros3fs specific options. '=' is mandatory.:
                        Default value is 3600
 --list_max_keys=KEYS   The number of keys fetched in one request (optional)
                        Default value is 1000
+--remote_url=URL       HTTP storage URL (optional)
 
 FUSE specific options:
 -d, -odebug
     Causes debug information for subsequent FUSE library calls
     to be output to stderr. Implies -f.
 -f
-    If this is specified then fg will be set to 1 on success. 
-    This flag indicates that the file system should not detach from 
+    If this is specified then fg will be set to 1 on success.
+    This flag indicates that the file system should not detach from
     the controlling terminal and run in the foreground.
 -h, --help, -ho
-    Print usage information for the options supported by 
+    Print usage information for the options supported by
     fuse_parse_cmdline().
 -s
-    If this is specified then mt will be set to 0 on success. 
-    This flag indicates that the file system should be run 
+    If this is specified then mt will be set to 0 on success.
+    This flag indicates that the file system should be run
     in multi-threaded mode. -s is currently ignored and mt will always be 0.
 ```
 
