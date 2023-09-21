@@ -95,12 +95,12 @@ FUSE specific options:
 ### Develop using local Ozone cluster using Docker
 First, install [AWS CLI](https://docs.aws.amazon.com/ja_jp/cli/latest/userguide/getting-started-install.html).
 
-In a terminal,
+In terminal 1,
 ```
 $ ./launch-ozone.sh
 ```
 
-In another terminal,
+In terminal 2,
 ```
 $ aws configure set default.s3.signature_version s3v4
 $ aws configure set region us-west-1
@@ -110,7 +110,12 @@ $ ./create-files.sh
 $ ./mount-ros3fs.sh
 ```
 
-In the third terminal,
+In terminal 3,
+```
+./run_webdav_server.sh
+```
+
+In terminal 4,
 ```
 $ ls build/ros3fs_mountpoint
 dir_a/  testfile_a  testfile_b  testfile_c
