@@ -5,9 +5,13 @@
 #include "glog/logging.h"
 
 #include <cstddef>
+#include <curl/curl.h>
+#include <fcntl.h>
 #include <filesystem>
 #include <memory>
 #include <nlohmann/json.hpp>
+#include <stdio.h>
+#include <sys/stat.h>
 
 #include <aws/core/Aws.h>
 #include <aws/core/utils/logging/LogLevel.h>
@@ -48,38 +52,163 @@ std::vector<ObjectMetaData> DeserializeObjectMetaData(const std::string &json) {
   return meta_datas;
 }
 
+static size_t read_callback(char *ptr, size_t size, size_t nmemb,
+                            void *stream) {
+  size_t retcode;
+  unsigned long nread;
+
+  /* in real-world cases, this would probably get this data differently
+     as this fread() stuff is exactly what the library already would do
+     by default internally */
+  retcode = fread(ptr, size, nmemb, reinterpret_cast<FILE *>(stream));
+
+  if (retcode > 0) {
+    nread = (unsigned long)retcode;
+    fprintf(stderr, "*** We read %lu bytes from file\n", nread);
+  }
+
+  return retcode;
+}
+
+void PutDataToWebdavWithCurl(const std::string &url,
+                             const std::string &filename) {
+  LOG(INFO) << "PutDataToWebdavWithCurl " << LOG_KEY(url) << LOG_KEY(filename);
+
+  CURL *curl;
+  CURLcode res;
+  FILE *hd_src;
+  struct stat file_info;
+
+  /* get the file size of the local file */
+  stat(filename.c_str(), &file_info);
+
+  /* get a FILE * of the same file, could also be made with
+     fdopen() from the previous descriptor, but hey this is just
+     an example! */
+  hd_src = fopen(filename.c_str(), "rb");
+
+  /* In windows, this will init the winsock stuff */
+  curl_global_init(CURL_GLOBAL_ALL);
+
+  /* get a curl handle */
+  curl = curl_easy_init();
+  if (curl) {
+    /* we want to use our own read function */
+    curl_easy_setopt(curl, CURLOPT_READFUNCTION, read_callback);
+
+    /* enable uploading (implies PUT over HTTP) */
+    curl_easy_setopt(curl, CURLOPT_UPLOAD, 1L);
+
+    /* specify target URL, and note that this URL should include a file
+       name, not only a directory */
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+
+    /* now specify which file to upload */
+    curl_easy_setopt(curl, CURLOPT_READDATA, hd_src);
+
+    /* provide the size of the upload, we typecast the value to curl_off_t
+       since we must be sure to use the correct data size */
+    curl_easy_setopt(curl, CURLOPT_INFILESIZE_LARGE,
+                     (curl_off_t)file_info.st_size);
+
+    /* Now run off and do what you have been told! */
+    res = curl_easy_perform(curl);
+    /* Check for errors */
+    if (res != CURLE_OK)
+      fprintf(stderr, "curl_easy_perform() failed: %s\n",
+              curl_easy_strerror(res));
+
+    /* always cleanup */
+    curl_easy_cleanup(curl);
+  }
+  fclose(hd_src); /* close the local file */
+
+  curl_global_cleanup();
+}
+
+bool GetDataFromWebdavWithCurl(const std::string &url,
+                               const std::string &filename) {
+  LOG(INFO) << "GetDataFromWebdavWithCurl " << LOG_KEY(url);
+  CURL *curl;
+  CURLcode res;
+
+  curl = curl_easy_init();                          //ハンドラの初期化
+  curl_easy_setopt(curl, CURLOPT_URL, url.c_str()); // URLの登録
+
+  FILE *fp =
+      fopen(filename.c_str(),
+            "w"); //取得したデータを書き込むファイル、"f_name"はファイル名
+  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION,
+                   fwrite); // BODYを書き込む関数ポインタを登録
+  curl_easy_setopt(curl, CURLOPT_WRITEDATA,
+                   fp); //↑で登録した関数が読み取るファイルポインタ
+  res = curl_easy_perform(curl); //いままで登録した情報で色々実行
+  CHECK_EQ(res, CURLE_OK);
+
+  long http_code = 0;
+  curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE,
+                    &http_code); //ステータスコードの取得
+  curl_easy_cleanup(curl);       //ハンドラのクリーンアップ
+  fclose(fp);
+
+  if (http_code == 200) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
 } // namespace
 
 std::vector<uint8_t>
 ROS3FSContext::GetFileContents(const std::filesystem::path &path) {
   std::filesystem::path cache_file =
       cache_dir() / ("ros3fs_cache_file_" + GetSHA256(path.string()));
+  const std::optional<std::string> remote_url = remote_url_;
 
   if (!std::filesystem::exists(cache_file)) {
-    Aws::Client::ClientConfiguration config;
-    config.endpointOverride = endpoint_;
-    Aws::S3::S3Client client(config);
-
-    Aws::S3::Model::GetObjectRequest request;
-    request.SetBucket(bucket_name_);
-    request.SetKey(path.string().substr(1));
-
-    Aws::S3::Model::GetObjectOutcome outcome = client.GetObject(request);
-
-    if (outcome.IsSuccess()) {
+    LOG(INFO) << "Cache file " << cache_file << " does not exist.";
+    bool downloadedFromWebdav = false;
+    if (remote_url.has_value()) {
+      LOG(INFO) << "Try to get " << path.string().substr(1) << " from "
+                << remote_url.value();
+      downloadedFromWebdav = GetDataFromWebdavWithCurl(
+          remote_url.value() + GetSHA256(path.string()), cache_file);
+    }
+    if (downloadedFromWebdav) {
       LOG(INFO) << "Successfully retrieved '" << path.string().substr(1)
-                << "' from '"
-                << "bucket1/"
-                << "'." << std::endl;
-      {
-        std::lock_guard<std::mutex> lock(cache_file_mutex_);
-        std::ofstream ofs(cache_file);
-        ofs << outcome.GetResult().GetBody().rdbuf();
-      }
+                << " from " << remote_url.value() << ".";
     } else {
-      const Aws::S3::S3Error &err = outcome.GetError();
-      LOG(FATAL) << "Error: GetObject: " << err.GetExceptionName() << ": "
-                 << err.GetMessage() << std::endl;
+      Aws::Client::ClientConfiguration config;
+      config.endpointOverride = endpoint_;
+      Aws::S3::S3Client client(config);
+
+      Aws::S3::Model::GetObjectRequest request;
+      request.SetBucket(bucket_name_);
+      request.SetKey(path.string().substr(1));
+
+      Aws::S3::Model::GetObjectOutcome outcome = client.GetObject(request);
+
+      if (outcome.IsSuccess()) {
+        LOG(INFO) << "Successfully retrieved '" << path.string().substr(1)
+                  << "' from '"
+                  << "bucket1/"
+                  << "'." << std::endl;
+        {
+          std::lock_guard<std::mutex> lock(cache_file_mutex_);
+          std::ofstream ofs(cache_file);
+          ofs << outcome.GetResult().GetBody().rdbuf();
+
+          if (remote_url.has_value()) {
+            PutDataToWebdavWithCurl(
+                remote_url.value() + GetSHA256(path.string()), cache_file);
+          }
+        }
+      } else {
+        const Aws::S3::S3Error &err = outcome.GetError();
+        LOG(FATAL) << "Error: GetObject: " << err.GetExceptionName() << ": "
+                   << err.GetMessage() << std::endl;
+      }
     }
   }
 
@@ -286,12 +415,14 @@ ROS3FSContext::ROS3FSContext(const std::string &endpoint,
                              const std::string &bucket_name,
                              const int update_seconds, const int list_max_keys,
                              const std::filesystem::path &cache_dir,
-                             const bool clear_cache)
+                             const bool clear_cache,
+                             const std::optional<std::string> &remote_url)
     : endpoint_(endpoint), bucket_name_(bucket_name),
       cache_dir_(std::filesystem::canonical(cache_dir)),
       clear_cache_(clear_cache),
       lock_dir_(std::filesystem::canonical(cache_dir) / "lock"),
       update_seconds_(update_seconds), list_max_keys_(list_max_keys),
+      remote_url_(remote_url),
       meta_data_path_(
           std::filesystem::canonical(cache_dir) /
           ("ros3fs_meta_data_" + GetSHA256(endpoint + bucket_name) + ".json")) {

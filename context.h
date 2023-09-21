@@ -39,15 +39,16 @@ public:
   ROS3FSContext(ROS3FSContext const &) = delete;
   void operator=(ROS3FSContext const &) = delete;
   static ROS3FSContext &GetContext() {
-    return GetContextImpl("", "", 0, 0, "", false);
+    return GetContextImpl("", "", 0, 0, "", false, std::nullopt);
   }
   static void InitContext(const std::string &endpoint,
                           const std::string &bucket_name,
                           const int update_seconds, const int list_max_keys,
                           const std::filesystem::path &cache_dir,
-                          const bool clear_cache) {
+                          const bool clear_cache,
+                          const std::optional<std::string> &remote_url) {
     GetContextImpl(endpoint, bucket_name, update_seconds, list_max_keys,
-                   cache_dir, clear_cache);
+                   cache_dir, clear_cache, remote_url);
   }
 
   std::vector<FileMetaData> ReadDirectory(const std::filesystem::path &path);
@@ -55,6 +56,7 @@ public:
 
   std::vector<uint8_t> GetFileContents(const std::filesystem::path &path);
   std::filesystem::path cache_dir() const { return cache_dir_; }
+  std::optional<std::string> remote_url() const { return remote_url_; }
 
 private:
   const std::string endpoint_;
@@ -64,6 +66,7 @@ private:
   const std::filesystem::path lock_dir_;
   const uint64_t update_seconds_;
   const int list_max_keys_;
+  const std::optional<std::string> remote_url_;
 
   // You must get meta_data_mutex_ before accessing root_directory_ and
   // meta_data_path_.
@@ -84,17 +87,18 @@ private:
 
   ROS3FSContext(const std::string &endpoint, const std::string &bucket_name,
                 const int update_metadata_seconds, const int list_max_keys,
-                const std::filesystem::path &cache_dir, const bool clear_cache);
+                const std::filesystem::path &cache_dir, const bool clear_cache,
+                const std::optional<std::string> &remote_url);
   ~ROS3FSContext();
 
-  static ROS3FSContext &GetContextImpl(const std::string &endpoint,
-                                       const std::string &bucket_name,
-                                       const int update_metadata_seconds,
-                                       const int list_max_keys,
-                                       const std::filesystem::path &cache_dir,
-                                       const bool clear_cache) {
+  static ROS3FSContext &
+  GetContextImpl(const std::string &endpoint, const std::string &bucket_name,
+                 const int update_metadata_seconds, const int list_max_keys,
+                 const std::filesystem::path &cache_dir, const bool clear_cache,
+                 const std::optional<std::string> &remote_url) {
     static ROS3FSContext context(endpoint, bucket_name, update_metadata_seconds,
-                                 list_max_keys, cache_dir, clear_cache);
+                                 list_max_keys, cache_dir, clear_cache,
+                                 remote_url);
     return context;
   }
 

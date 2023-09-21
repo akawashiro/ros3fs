@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <memory>
 #include <openssl/sha.h>
+#include <optional>
 #include <set>
 #include <sys/stat.h>
 #define FUSE_USE_VERSION 31
@@ -45,6 +46,7 @@ struct ROS3FSOptions {
   int clear_cache;
   int update_seconds;
   int list_max_keys;
+  const char *remote_url;
 } ROS3FSOptions;
 
 #define OPTION(t, p)                                                           \
@@ -58,6 +60,7 @@ const struct fuse_opt option_spec[] = {
     OPTION("--clear_cache", clear_cache),
     OPTION("--update_seconds=%d", update_seconds),
     OPTION("--list-max-keys=%d", list_max_keys),
+    OPTION("--remote_url=%s", remote_url),
     FUSE_OPT_END};
 
 void show_help(const char *progname) {
@@ -82,6 +85,7 @@ void show_help(const char *progname) {
          "(optional)"
       << std::endl
       << "                       Default value is 1000" << std::endl
+      << "--remote_url=URL       Webdav URL (optional)" << std::endl
       << std::endl
       << "FUSE specific options:" << std::endl
       << "-d, -odebug" << std::endl
@@ -299,9 +303,15 @@ int main(int argc, char *argv[]) {
                                 ? ROS3FSOptions.list_max_keys
                                 : defaultListMaxKeys;
 
-  ROS3FSContext::InitContext(ROS3FSOptions.endpoint, ROS3FSOptions.bucket_name,
-                             update_seconds, list_max_keys, cache_dir,
-                             clear_cache);
+  std::optional<std::string> remote_url = std::nullopt;
+  if (ROS3FSOptions.remote_url != NULL) {
+    remote_url = std::string(ROS3FSOptions.remote_url);
+  }
+
+  ROS3FSContext::InitContext(
+      ROS3FSOptions.endpoint, ROS3FSOptions.bucket_name, update_seconds,
+      list_max_keys, cache_dir, clear_cache,
+      remote_url == "" ? std::nullopt : std::optional(remote_url));
 
   ret = fuse_main(args.argc, args.argv, &ozonefs_oper, NULL);
   fuse_opt_free_args(&args);

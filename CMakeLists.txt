@@ -50,11 +50,12 @@ FetchContent_MakeAvailable(json)
 
 find_package(ZLIB)
 find_package(AWSSDK REQUIRED COMPONENTS s3)
+find_package(CURL REQUIRED) 
 
 add_executable(ros3fs ros3fs.cc sha256.cc context.cc)
 install(TARGETS ros3fs DESTINATION bin)
-target_link_libraries(ros3fs ${AWSSDK_LINK_LIBRARIES} ${LIBFUSE3_LIBRARIES} glog nlohmann_json::nlohmann_json  ZLIB::ZLIB)
-target_include_directories(ros3fs PRIVATE ${LIBFUSE3_INCLUDE_DIRS})
+target_link_libraries(ros3fs ${AWSSDK_LINK_LIBRARIES} ${LIBFUSE3_LIBRARIES} glog nlohmann_json::nlohmann_json ZLIB::ZLIB ${CURL_LIBRARIES})
+target_include_directories(ros3fs PRIVATE ${LIBFUSE3_INCLUDE_DIRS} ${CURL_INCLUDE_DIR})
 target_compile_options(ros3fs PUBLIC -Wall -Werror)
 
 if(BUILD_TESTING)
