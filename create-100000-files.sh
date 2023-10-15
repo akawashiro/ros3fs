@@ -1,7 +1,7 @@
 #! /bin/bash -eu
 # Check http://${OZONE_OM_IP}:9876/#!/ when you encounter errors.
 
-OZONE_OM_IP=$(docker inspect --format='{{.NetworkSettings.Networks.bridge.Gateway}}' ozone-instance)
+OZONE_OM_IP=$(sudo docker inspect --format='{{.NetworkSettings.Networks.bridge.Gateway}}' ozone-instance)
 TMPDIR=$(mktemp -d)
 for i in $(seq 1 10000)
 do
