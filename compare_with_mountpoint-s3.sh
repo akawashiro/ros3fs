@@ -49,25 +49,25 @@ aws s3 --endpoint http://${OZONE_OM_IP}:9878 ls s3://bucket1/
 rm -rf ${TMPDIR}
 
 # Mount ros3fs
-umount ./${BUILD_DIR}/ros3fs_mountpoint || true
-./${BUILD_DIR}/ros3fs ./${BUILD_DIR}/ros3fs_mountpoint --endpoint=http://${OZONE_OM_IP}:9878 \
+umount ${BUILD_DIR}/ros3fs_mountpoint || true
+${BUILD_DIR}/ros3fs ./${BUILD_DIR}/ros3fs_mountpoint --endpoint=http://${OZONE_OM_IP}:9878 \
     --bucket_name=bucket1/ --cache_dir=./${BUILD_DIR}/ros3fs_cache_dir --update_seconds=100 --clear_cache &
 
 # Mount s3fs-fuse
 if [[ ! -d ${BUILD_DIR}/s3fs-fuse_mountpoint ]]; then
     mkdir -p ${BUILD_DIR}/s3fs-fuse_mountpoint
 fi
-umount ./${BUILD_DIR}/s3fs-fuse_mountpoint || true
+umount ${BUILD_DIR}/s3fs-fuse_mountpoint || true
 s3fs bucket1 ${BUILD_DIR}/s3fs-fuse_mountpoint  -o url=http://${OZONE_OM_IP}:9878 -o use_path_request_style
 
 # Mount mountpoint-s3
 if [[ ! -d ${BUILD_DIR}/mountpoint-s3_mountpoint ]]; then
     mkdir -p ${BUILD_DIR}/mountpoint-s3_mountpoint
 fi
-umount ./${BUILD_DIR}/mountpoint-s3_mountpoint || true
-./${BUILD_DIR}/mountpoint-s3/target/release/mount-s3  --endpoint-url=http://${OZONE_OM_IP}:9878 bucket1 ./${BUILD_DIR}/mountpoint-s3_mountpoint
+umount ${BUILD_DIR}/mountpoint-s3_mountpoint || true
+${BUILD_DIR}/mountpoint-s3/target/release/mount-s3  --endpoint-url=http://${OZONE_OM_IP}:9878 bucket1 ./${BUILD_DIR}/mountpoint-s3_mountpoint
 
 # Compare
-hyperfine --ignore-failure --warmup 3 "grep -Rnw ./${BUILD_DIR}/ros3fs_mountpoint -e '123'" 2>/dev/null
-hyperfine --ignore-failure --warmup 3 "grep -Rnw ./${BUILD_DIR}/s3fs-fuse_mountpoint -e '123'" 2>/dev/null
-hyperfine --ignore-failure --warmup 3 "grep -Rnw ./${BUILD_DIR}/mountpoint-s3_mountpoint -e '123'" 2>/dev/null
+hyperfine --ignore-failure --warmup 3 "grep -Rnw ${BUILD_DIR}/ros3fs_mountpoint -e '123'" 2>/dev/null
+hyperfine --ignore-failure --warmup 3 "grep -Rnw ${BUILD_DIR}/s3fs-fuse_mountpoint -e '123'" 2>/dev/null
+hyperfine --ignore-failure --warmup 3 "grep -Rnw ${BUILD_DIR}/mountpoint-s3_mountpoint -e '123'" 2>/dev/null
