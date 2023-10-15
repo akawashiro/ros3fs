@@ -102,10 +102,6 @@ $ ./launch-ozone.sh
 
 In another terminal,
 ```
-$ aws configure set default.s3.signature_version s3v4
-$ aws configure set region us-west-1
-$ aws configure set aws_access_key_id "hoge"
-$ aws configure set aws_secret_access_key "fuga"
 $ ./create-files.sh
 $ ./mount-ros3fs.sh
 ```

@@ -5,6 +5,10 @@ OZONE_OM_IP=$(sudo docker inspect --format='{{.NetworkSettings.Networks.bridge.G
 ROS3FS_MOUNTPOINT_ANSWER=$(git rev-parse --show-toplevel)/build/ros3fs_mountpoint_answer
 mkdir -p ${ROS3FS_MOUNTPOINT_ANSWER}
 
+aws configure set default.s3.signature_version s3v4
+aws configure set region us-west-1
+aws configure set aws_access_key_id "hoge"
+aws configure set aws_secret_access_key "fuga"
 aws s3api --endpoint http://${OZONE_OM_IP}:9878 create-bucket --bucket=bucket1
 
 for f in testfile_a testfile_b testfile_c dir_a/testfile_a dir_a/dir_a/testfile_a
