@@ -17,7 +17,7 @@ if [[ ! -d ${BUILD_DIR}/mountpoint-s3 ]]; then
     pushd ${BUILD_DIR}/mountpoint-s3
     git checkout v1.0.2
     git submodule update --init --recursive
-    cargo ${BUILD_DIR} --release
+    cargo build --release
     popd
 fi
 
