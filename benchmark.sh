@@ -1,7 +1,7 @@
 #! /bin/bash -eu
 
 cd $(git rev-parse --show-toplevel)
-BUILD_DIR=$(pwd)/build_compare_with_mountpoint-s3
+BUILD_DIR=$(pwd)/build_benchmark
 
 # Build ros3fs
 if [[ ! -d ${BUILD_DIR} ]]; then
@@ -88,9 +88,9 @@ echo "============================================================"
 
 mount_FUSEs
 echo "========== Compare grep performance with cache =========="
-hyperfine --ignore-failure --warmup 3 --runs 10 "grep -r ${BUILD_DIR}/ros3fs_mountpoint -e '123'" 2>/dev/null
-hyperfine --ignore-failure --warmup 3 --runs 10 "grep -r ${BUILD_DIR}/s3fs-fuse_mountpoint -e '123'" 2>/dev/null
-hyperfine --ignore-failure --warmup 3 --runs 10 "grep -r ${BUILD_DIR}/mountpoint-s3_mountpoint -e '123'" 2>/dev/null
+hyperfine --ignore-failure --style basic --warmup 3 --runs 10 "grep -r ${BUILD_DIR}/ros3fs_mountpoint -e '123'" 2>/dev/null
+hyperfine --ignore-failure --style basic --warmup 3 --runs 10 "grep -r ${BUILD_DIR}/s3fs-fuse_mountpoint -e '123'" 2>/dev/null
+hyperfine --ignore-failure --style basic --warmup 3 --runs 10 "grep -r ${BUILD_DIR}/mountpoint-s3_mountpoint -e '123'" 2>/dev/null
 echo "========================================================="
 
 mount_FUSEs
@@ -105,8 +105,8 @@ echo "============================================================"
 
 sleep 10
 mount_FUSEs
-echo "========== Compare grep performance with cache =========="
-hyperfine --ignore-failure --warmup 3 --runs 10 "find ${BUILD_DIR}/ros3fs_mountpoint"
-hyperfine --ignore-failure --warmup 3 --runs 10 "find ${BUILD_DIR}/s3fs-fuse_mountpoint"
-hyperfine --ignore-failure --warmup 3 --runs 10 "find ${BUILD_DIR}/mountpoint-s3_mountpoint"
+echo "========== Compare find performance with cache =========="
+hyperfine --ignore-failure --style basic --warmup 3 --runs 10 "find ${BUILD_DIR}/ros3fs_mountpoint"
+hyperfine --ignore-failure --style basic --warmup 3 --runs 10 "find ${BUILD_DIR}/s3fs-fuse_mountpoint"
+hyperfine --ignore-failure --style basic --warmup 3 --runs 10 "find ${BUILD_DIR}/mountpoint-s3_mountpoint"
 echo "========================================================="
